@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Storyboard Generator</title>
+<style>
+  :root {
+    --bg: #0f0f10;
+    --surface: #1a1a1d;
+    --surface-2: #232327;
+    --border: #2c2c31;
+    --border-strong: #3a3a40;
+    --text: #ececee;
+    --text-dim: #9a9aa3;
+    --text-soft: #6c6c75;
+    --accent: #d4a373;
+    --accent-soft: #3a2f24;
+    --danger: #e06363;
+    --ok: #7bb37b;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow: 0 6px 24px rgba(0,0,0,0.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.5; }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  button { cursor: pointer; border: none; background: none; }
+  textarea { resize: vertical; }
+  a { color: var(--accent); }
+
+  .app { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+
+  /* Top bar */
+  .topbar { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .brand { font-weight: 600; letter-spacing: 0.2px; }
+  .brand-dot { color: var(--accent); }
+  .topbar-spacer { flex: 1; }
+  .icon-btn { padding: 8px 12px; border-radius: var(--radius-sm); color: var(--text-dim); border: 1px solid var(--border); background: var(--surface-2); transition: all .15s; }
+  .icon-btn:hover { color: var(--text); border-color: var(--border-strong); }
+  .icon-btn.warn { color: var(--danger); border-color: rgba(224,99,99,0.3); }
+
+  /* Stepper */
+  .stepper { display: flex; gap: 6px; padding: 14px 24px; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .step { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: var(--radius-sm); background: transparent; color: var(--text-soft); border: 1px solid transparent; white-space: nowrap; transition: all .15s; }
+  .step:hover { color: var(--text-dim); background: var(--surface-2); }
+  .step.active { color: var(--text); background: var(--accent-soft); border-color: rgba(212,163,115,0.3); }
+  .step.done { color: var(--text-dim); }
+  .step.disabled { opacity: 0.4; cursor: not-allowed; }
+  .step-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface-2); font-size: 12px; font-weight: 600; color: var(--text-dim); }
+  .step.active .step-num { background: var(--accent); color: #1a1a1d; }
+  .step.done .step-num { background: var(--ok); color: #1a1a1d; }
+  .step-label { font-size: 13px; }
+
+  /* Content */
+  .main { padding: 32px 24px 80px; max-width: 920px; margin: 0 auto; width: 100%; }
+  .step-header { margin-bottom: 24px; }
+  .step-title { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+  .step-sub { color: var(--text-dim); margin: 0; }
+
+  /* Form */
+  .field { margin-bottom: 20px; }
+  .field-label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 6px; font-weight: 500; }
+  .field-hint { color: var(--text-soft); font-size: 12px; margin-top: 4px; }
+  .input, .textarea, .select { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; color: var(--text); outline: none; transition: border-color .15s; }
+  .input:focus, .textarea:focus, .select:focus { border-color: var(--accent); }
+  .textarea { min-height: 120px; font-family: inherit; }
+  .textarea.lg { min-height: 240px; }
+
+  /* Buttons */
+  .btn { padding: 10px 18px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-weight: 500; transition: all .15s; }
+  .btn:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); color: #1a1a1d; border-color: var(--accent); }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.1); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
+  .btn.ghost:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
+  .btn.sm { padding: 6px 12px; font-size: 13px; }
+  .btn.danger { color: var(--danger); border-color: rgba(224,99,99,0.3); }
+  .btn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .btn-row.right { justify-content: flex-end; }
+  .btn-row.between { justify-content: space-between; }
+
+  /* Nav footer */
+  .nav-footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--border); padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px; z-index: 10; }
+  .nav-footer-inner { max-width: 920px; width: 100%; margin: 0 auto; display: flex; justify-content: space-between; gap: 12px; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .card + .card { margin-top: 12px; }
+
+  /* Refs grid */
+  .refs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-top: 12px; }
+  .ref-thumb { position: relative; aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); background: var(--surface-2); }
+  .ref-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ref-thumb .remove { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.6); color: white; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; line-height: 1; }
+  .ref-upload { aspect-ratio: 1; border: 2px dashed var(--border-strong); border-radius: var(--radius-sm); display: grid; place-items: center; color: var(--text-dim); cursor: pointer; transition: all .15s; text-align: center; padding: 12px; }
+  .ref-upload:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Modal */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: grid; place-items: center; z-index: 100; padding: 20px; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; width: 100%; max-width: 520px; box-shadow: var(--shadow); }
+  .modal-title { font-size: 18px; font-weight: 600; margin: 0 0 18px; }
+
+  /* Misc */
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text-dim); font-size: 11px; }
+  .pill.ok { color: var(--ok); background: rgba(123,179,123,0.1); }
+  .pill.err { color: var(--danger); background: rgba(224,99,99,0.1); }
+  .pill.warn { color: var(--accent); background: var(--accent-soft); }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--text-soft); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hidden { display: none !important; }
+  .row { display: flex; gap: 12px; align-items: center; }
+  .grow { flex: 1; }
+  .muted { color: var(--text-dim); }
+  .soft { color: var(--text-soft); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+  /* Scene cards */
+  .scene { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; }
+  .scene-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .scene-num { font-weight: 600; color: var(--accent); }
+  .scene-actions { display: flex; gap: 6px; margin-left: auto; }
+  .scene-img { width: 100%; border-radius: var(--radius-sm); margin-top: 10px; border: 1px solid var(--border); }
+  .scene-img-empty { width: 100%; aspect-ratio: 16/9; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px dashed var(--border-strong); display: grid; place-items: center; color: var(--text-soft); margin-top: 10px; }
+
+  .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 10px 18px; box-shadow: var(--shadow); z-index: 200; max-width: 90%; }
+  .toast.err { border-color: var(--danger); color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="brand">Storyboard<span class="brand-dot">.</span></div>
+    <div class="topbar-spacer"></div>
+    <button class="icon-btn" id="btn-new-project" title="Novo projeto">+ Novo</button>
+    <button class="icon-btn" id="btn-settings">Settings</button>
+  </header>
+
+  <!-- Stepper -->
+  <nav class="stepper" id="stepper"></nav>
+
+  <!-- Main content -->
+  <main class="main" id="main"></main>
+
+  <!-- Nav footer -->
+  <div class="nav-footer">
+    <div class="nav-footer-inner">
+      <button class="btn ghost" id="btn-prev">← Voltar</button>
+      <div class="muted" id="autosave-status"></div>
+      <button class="btn primary" id="btn-next">Avançar →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal mount -->
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+
+<script>
+'use strict';
+
+// =====================================================================
+// CONFIG
+// =====================================================================
+const STEPS = [
+  { id: 1, key: 'roteiro',    label: 'Roteiro' },
+  { id: 2, key: 'personagem', label: 'Personagem' },
+  { id: 3, key: 'estetica',   label: 'Estética' },
+  { id: 4, key: 'cenas',      label: 'Cenas' },
+  { id: 5, key: 'prompts',    label: 'Prompts' },
+  { id: 6, key: 'geracao',    label: 'Geração' },
+  { id: 7, key: 'review',     label: 'Review' },
+];
+
+const DEFAULT_SETTINGS = {
+  anthropicKey: '',
+  googleKey: '',
+  claudeModel: 'claude-sonnet-4-5-20250929',
+  imageModel: 'gemini-2.5-flash-image-preview',
+  aspectRatio: '16:9',
+};
+
+const CLAUDE_MODELS = [
+  'claude-opus-4-5',
+  'claude-sonnet-4-5-20250929',
+  'claude-haiku-4-5-20251001',
+];
+const IMAGE_MODELS = [
+  { id: 'gemini-2.5-flash-image-preview', label: 'Gemini 2.5 Flash Image (aceita refs)' },
+  { id: 'imagen-3.0-generate-002',        label: 'Imagen 3 (texto-only)' },
+];
+
+const STORAGE_KEY = 'storyboard_v1';
+const SETTINGS_KEY = 'storyboard_settings_v1';
+
+// =====================================================================
+// STATE
+// =====================================================================
+function emptyProject() {
+  return {
+    id: 'p_' + Date.now().toString(36),
+    createdAt: new Date().toISOString(),
+    step: 1,
+    roteiro: '',
+    personagem: { nome: '', descricao: '', refImg: null },
+    estetica: { refs: [], styleBlock: '', analise: '' },
+    cenas: [],
+  };
+}
+
+let project  = loadProject()  || emptyProject();
+let settings = loadSettings() || { ...DEFAULT_SETTINGS };
+
+// =====================================================================
+// PERSISTENCE
+// =====================================================================
+function saveProject() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
+    flashAutosave();
+  } catch (e) {
+    // Quota — trim image history to just current version per scene
+    try {
+      for (const c of (project.cenas || [])) {
+        if (c.imagens && c.imagens.length > 1) {
+          const idx = c.currentImageIdx >= 0 ? c.currentImageIdx : c.imagens.length - 1;
+          c.imagens = [c.imagens[idx]];
+          c.currentImageIdx = 0;
+        }
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
+      toast('Espaço cheio: histórico de regerações reduzido. Baixe imagens importantes.', true);
+    } catch (e2) {
+      // Still too big — drop all images, keep prompts/text
+      for (const c of (project.cenas || [])) { c.imagens = []; c.currentImageIdx = -1; c.status = 'pending'; }
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(project)); } catch {}
+      toast('Espaço esgotado: imagens não foram salvas. Baixe antes de recarregar.', true);
+    }
+  }
+}
+function loadProject()  { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)  || 'null'); } catch { return null; } }
+function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch(e) { console.warn(e); } }
+function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch { return null; } }
+
+let autosaveTimer = null;
+function flashAutosave() {
+  const el = document.getElementById('autosave-status');
+  if (!el) return;
+  el.textContent = 'Salvo';
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => { el.textContent = ''; }, 1500);
+}
+
+// =====================================================================
+// UTILS
+// =====================================================================
+function $(sel, root = document) { return root.querySelector(sel); }
+function $$(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') node.className = v;
+    else if (k === 'style' && typeof v === 'object') Object.assign(node.style, v);
+    else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v === true) node.setAttribute(k, '');
+    else if (v !== false && v != null) node.setAttribute(k, v);
+  }
+  for (const c of children.flat()) {
+    if (c == null || c === false) continue;
+    node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return node;
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const result = r.result;
+      const comma = result.indexOf(',');
+      resolve({ dataUrl: result, base64: result.slice(comma + 1), mimeType: file.type, name: file.name });
+    };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+function toast(msg, isErr = false) {
+  const root = $('#toast-root');
+  root.innerHTML = '';
+  const t = el('div', { class: 'toast' + (isErr ? ' err' : '') }, msg);
+  root.appendChild(t);
+  setTimeout(() => { if (t.parentNode) t.remove(); }, 3200);
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+// =====================================================================
+// API: ANTHROPIC
+// =====================================================================
+async function callClaude({ system, messages, maxTokens = 4096 }) {
+  if (!settings.anthropicKey) throw new Error('Falta a chave da Anthropic em Settings');
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': settings.anthropicKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: settings.claudeModel,
+      max_tokens: maxTokens,
+      system,
+      messages,
+    }),
+  });
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error('Claude ' + resp.status + ': ' + t.slice(0, 200));
+  }
+  const data = await resp.json();
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+  return text;
+}
+
+function imgPart(img) {
+  return { type: 'image', source: { type: 'base64', media_type: img.mimeType, data: img.base64 } };
+}
+
+// =====================================================================
+// API: GOOGLE (Gemini Image / Imagen)
+// =====================================================================
+async function generateImage({ prompt, refImages = [] }) {
+  if (!settings.googleKey) throw new Error('Falta a chave do Google AI em Settings');
+  const model = settings.imageModel;
+
+  if (model.startsWith('gemini-')) {
+    return generateImageGemini({ prompt, refImages, model });
+  }
+  return generateImageImagen({ prompt, model });
+}
+
+async function generateImageGemini({ prompt, refImages, model }) {
+  const parts = [{ text: prompt }];
+  for (const ref of refImages) {
+    parts.push({ inline_data: { mime_type: ref.mimeType, data: ref.base64 } });
+  }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(settings.googleKey)}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts }],
+      generationConfig: { responseModalities: ['IMAGE'] },
+    }),
+  });
+  if (!resp.ok) throw new Error('Gemini ' + resp.status + ': ' + (await resp.text()).slice(0, 200));
+  const data = await resp.json();
+  const cand = data.candidates?.[0]?.content?.parts || [];
+  const imgPart = cand.find(p => p.inlineData || p.inline_data);
+  const inline = imgPart?.inlineData || imgPart?.inline_data;
+  if (!inline) throw new Error('Gemini não retornou imagem');
+  return { base64: inline.data, mimeType: inline.mimeType || inline.mime_type || 'image/png', dataUrl: 'data:' + (inline.mimeType || inline.mime_type || 'image/png') + ';base64,' + inline.data };
+}
+
+async function generateImageImagen({ prompt, model }) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${encodeURIComponent(settings.googleKey)}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      instances: [{ prompt }],
+      parameters: { sampleCount: 1, aspectRatio: settings.aspectRatio || '16:9' },
+    }),
+  });
+  if (!resp.ok) throw new Error('Imagen ' + resp.status + ': ' + (await resp.text()).slice(0, 200));
+  const data = await resp.json();
+  const pred = data.predictions?.[0];
+  const b64 = pred?.bytesBase64Encoded || pred?.image?.bytesBase64Encoded;
+  if (!b64) throw new Error('Imagen não retornou imagem');
+  return { base64: b64, mimeType: 'image/png', dataUrl: 'data:image/png;base64,' + b64 };
+}
+
+// =====================================================================
+// RENDER: STEPPER + NAV
+// =====================================================================
+function renderStepper() {
+  const stepper = $('#stepper');
+  stepper.innerHTML = '';
+  for (const s of STEPS) {
+    const isActive = s.id === project.step;
+    const isDone   = s.id < project.step;
+    const cls = 'step' + (isActive ? ' active' : isDone ? ' done' : '');
+    const btn = el('button', { class: cls, onclick: () => goToStep(s.id) },
+      el('span', { class: 'step-num' }, String(s.id)),
+      el('span', { class: 'step-label' }, s.label),
+    );
+    stepper.appendChild(btn);
+  }
+}
+
+function goToStep(n) {
+  if (n < 1 || n > STEPS.length) return;
+  project.step = n;
+  saveProject();
+  renderAll();
+}
+
+function renderNavFooter() {
+  $('#btn-prev').disabled = project.step <= 1;
+  $('#btn-next').disabled = project.step >= STEPS.length || !canAdvance();
+  $('#btn-next').textContent = project.step >= STEPS.length ? 'Concluído' : 'Avançar →';
+}
+
+function canAdvance() {
+  switch (project.step) {
+    case 1: return project.roteiro.trim().length > 20;
+    case 2: return project.personagem.nome.trim() && project.personagem.descricao.trim();
+    case 3: return project.estetica.styleBlock.trim().length > 30;
+    case 4: return project.cenas.length > 0;
+    case 5: return project.cenas.length > 0 && project.cenas.every(c => c.prompt && c.prompt.trim());
+    case 6: return project.cenas.some(c => c.imagens && c.imagens.length > 0);
+    default: return true;
+  }
+}
+
+// =====================================================================
+// RENDER: MAIN DISPATCHER
+// =====================================================================
+function renderMain() {
+  const main = $('#main');
+  main.innerHTML = '';
+  const step = STEPS[project.step - 1];
+  const renderer = STEP_RENDERERS[step.key];
+  if (renderer) main.appendChild(renderer());
+  else main.appendChild(el('div', {}, 'Step não implementado: ' + step.key));
+}
+
+function renderAll() {
+  renderStepper();
+  renderMain();
+  renderNavFooter();
+}
+
+// =====================================================================
+// STEP RENDERERS
+// =====================================================================
+const STEP_RENDERERS = {};
+
+// ---------- STEP 1: ROTEIRO ----------
+STEP_RENDERERS.roteiro = function () {
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'step-header' },
+    el('h1', { class: 'step-title' }, '1. Roteiro'),
+    el('p', { class: 'step-sub' }, 'Cole o roteiro básico do vídeo. Pode ser texto corrido, lista de cenas, ou apenas a ideia geral.'),
+  ));
+  const ta = el('textarea', {
+    class: 'textarea lg',
+    placeholder: 'Ex: Uma mulher caminha por um jardim ao amanhecer. Ela encontra uma carta antiga sob uma árvore. Ao abrir, lê em silêncio...',
+  });
+  ta.value = project.roteiro;
+  ta.addEventListener('input', () => {
+    project.roteiro = ta.value;
+    saveProject();
+    renderNavFooter();
+  });
+  wrap.appendChild(el('div', { class: 'field' }, ta, el('div', { class: 'field-hint' }, 'Mínimo 20 caracteres pra avançar.')));
+  return wrap;
+};
+
+// ---------- STEP 2: PERSONAGEM ----------
+STEP_RENDERERS.personagem = function () {
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'step-header' },
+    el('h1', { class: 'step-title' }, '2. Personagem'),
+    el('p', { class: 'step-sub' }, 'Defina o protagonista. Quanto mais específico, mais consistente fica entre as cenas.'),
+  ));
+
+  // Nome
+  const nomeIn = el('input', { class: 'input', placeholder: 'Ex: Marina, 32, fotógrafa' });
+  nomeIn.value = project.personagem.nome;
+  nomeIn.addEventListener('input', () => { project.personagem.nome = nomeIn.value; saveProject(); renderNavFooter(); });
+  wrap.appendChild(el('div', { class: 'field' },
+    el('label', { class: 'field-label' }, 'Nome / Identificação'),
+    nomeIn,
+  ));
+
+  // Descrição
+  const descTa = el('textarea', { class: 'textarea', placeholder: 'Aparência física, idade aparente, vestimenta, traços marcantes, expressão típica...' });
+  descTa.value = project.personagem.descricao;
+  descTa.addEventListener('input', () => { project.personagem.descricao = descTa.value; saveProject(); renderNavFooter(); });
+  const descField = el('div', { class: 'field' },
+    el('label', { class: 'field-label' }, 'Descrição visual'),
+    descTa,
+    el('div', { class: 'field-hint' }, 'Inclua o que deve permanecer fixo entre cenas (rosto, cabelo, físico, idade).'),
+  );
+  wrap.appendChild(descField);
+
+  // Expandir com IA
+  const expandBtn = el('button', { class: 'btn sm' }, '✨ Expandir com IA');
+  let expandStatus = el('span', { class: 'muted' });
+  expandBtn.addEventListener('click', async () => {
+    if (!project.personagem.nome.trim() && !project.personagem.descricao.trim()) {
+      toast('Escreva ao menos um esboço antes de expandir', true); return;
+    }
+    expandBtn.disabled = true;
+    expandStatus.innerHTML = '<span class="spin"></span> analisando...';
+    try {
+      const out = await callClaude({
+        system: 'Você é um diretor de fotografia ajudando a estabilizar a descrição visual de um personagem para gerar imagens consistentes em um storyboard. Expanda o esboço do usuário em uma descrição compacta (8-15 linhas), com: gênero/idade aparente, etnia/pele, formato do rosto, olhos, cabelo (cor/comprimento/textura), físico, vestimenta padrão, postura, expressão típica. NÃO invente nada não implícito no esboço. Retorne só a descrição final, em português, sem títulos.',
+        messages: [{ role: 'user', content: `Esboço:\nNome: ${project.personagem.nome}\nDescrição: ${project.personagem.descricao}` }],
+      });
+      project.personagem.descricao = out.trim();
+      descTa.value = project.personagem.descricao;
+      saveProject();
+      renderNavFooter();
+      expandStatus.textContent = 'pronto';
+      setTimeout(() => { expandStatus.textContent = ''; }, 1500);
+    } catch (e) {
+      toast(e.message, true);
+      expandStatus.textContent = '';
+    } finally {
+      expandBtn.disabled = false;
+    }
+  });
+  descField.appendChild(el('div', { class: 'btn-row', style: { marginTop: '8px' } }, expandBtn, expandStatus));
+
+  // Ref do personagem (opcional)
+  const refField = el('div', { class: 'field' },
+    el('label', { class: 'field-label' }, 'Referência visual do personagem (opcional)'),
+    el('div', { class: 'field-hint' }, 'Se você tem uma foto/desenho que define o rosto/aparência. Será enviada como input pro gerador de imagem.'),
+  );
+  const refWrap = el('div', { class: 'refs-grid' });
+  function renderRef() {
+    refWrap.innerHTML = '';
+    if (project.personagem.refImg) {
+      const thumb = el('div', { class: 'ref-thumb' },
+        el('img', { src: project.personagem.refImg.dataUrl }),
+        el('button', { class: 'remove', title: 'Remover', onclick: () => { project.personagem.refImg = null; saveProject(); renderRef(); } }, '×'),
+      );
+      refWrap.appendChild(thumb);
+    } else {
+      const upBtn = el('label', { class: 'ref-upload' }, '+ Upload');
+      const file = el('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
+      file.addEventListener('change', async () => {
+        if (!file.files[0]) return;
+        const img = await fileToBase64(file.files[0]);
+        project.personagem.refImg = img;
+        saveProject();
+        renderRef();
+      });
+      upBtn.appendChild(file);
+      refWrap.appendChild(upBtn);
+    }
+  }
+  renderRef();
+  refField.appendChild(refWrap);
+  wrap.appendChild(refField);
+
+  return wrap;
+};
+
+// ---------- STEP 3: ESTÉTICA ----------
+STEP_RENDERERS.estetica = function () {
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'step-header' },
+    el('h1', { class: 'step-title' }, '3. Estética'),
+    el('p', { class: 'step-sub' }, 'Suba 1-5 imagens de referência que definem o estilo visual (fotografia, paleta, mood). A IA vai destilar isso num "styleBlock" que entra em toda cena.'),
+  ));
+
+  // Refs grid
+  const refField = el('div', { class: 'field' },
+    el('label', { class: 'field-label' }, 'Referências visuais'),
+  );
+  const refsGrid = el('div', { class: 'refs-grid' });
+  function renderRefs() {
+    refsGrid.innerHTML = '';
+    for (let i = 0; i < project.estetica.refs.length; i++) {
+      const r = project.estetica.refs[i];
+      refsGrid.appendChild(el('div', { class: 'ref-thumb' },
+        el('img', { src: r.dataUrl }),
+        el('button', { class: 'remove', onclick: () => { project.estetica.refs.splice(i, 1); saveProject(); renderRefs(); } }, '×'),
+      ));
+    }
+    if (project.estetica.refs.length < 5) {
+      const upBtn = el('label', { class: 'ref-upload' }, '+ Upload');
+      const file = el('input', { type: 'file', accept: 'image/*', multiple: true, style: { display: 'none' } });
+      file.addEventListener('change', async () => {
+        for (const f of Array.from(file.files).slice(0, 5 - project.estetica.refs.length)) {
+          const img = await fileToBase64(f);
+          project.estetica.refs.push(img);
+        }
+        saveProject();
+        renderRefs();
+      });
+      upBtn.appendChild(file);
+      refsGrid.appendChild(upBtn);
+    }
+  }
+  renderRefs();
+  refField.appendChild(refsGrid);
+  wrap.appendChild(refField);
+
+  // Analisar
+  const analyzeBtn = el('button', { class: 'btn primary' }, '✨ Analisar refs e gerar styleBlock');
+  const analyzeStatus = el('span', { class: 'muted' });
+  analyzeBtn.addEventListener('click', async () => {
+    if (project.estetica.refs.length === 0) { toast('Suba ao menos 1 referência', true); return; }
+    analyzeBtn.disabled = true;
+    analyzeStatus.innerHTML = '<span class="spin"></span> Claude está analisando...';
+    try {
+      const content = [
+        { type: 'text', text: 'Analise estas referências visuais e produza um "styleBlock" — um bloco de texto curto (10-20 linhas) que descreve a estética COMUM entre elas, em português. Cubra: tipo de fotografia/render, paleta de cor dominante, iluminação, contraste, granulação/textura, lente/profundidade de campo, atmosfera/mood, figurino/material se relevante. Esse bloco será COPIADO LITERALMENTE em cada prompt de cena — então use linguagem descritiva direta, sem títulos. Não descreva personagens ou ações específicas. Foque só no estilo.' },
+        ...project.estetica.refs.map(imgPart),
+      ];
+      const out = await callClaude({
+        system: 'Você é um diretor de fotografia que destila estilo visual a partir de referências. Sua saída será reutilizada como bloco fixo em vários prompts de geração de imagem.',
+        messages: [{ role: 'user', content }],
+      });
+      project.estetica.styleBlock = out.trim();
+      project.estetica.analise = out.trim();
+      sbTa.value = project.estetica.styleBlock;
+      saveProject();
+      renderNavFooter();
+      analyzeStatus.textContent = 'pronto';
+      setTimeout(() => { analyzeStatus.textContent = ''; }, 1500);
+    } catch (e) {
+      toast(e.message, true);
+      analyzeStatus.textContent = '';
+    } finally {
+      analyzeBtn.disabled = false;
+    }
+  });
+  wrap.appendChild(el('div', { class: 'btn-row', style: { marginTop: '8px', marginBottom: '20px' } }, analyzeBtn, analyzeStatus));
+
+  // styleBlock editável
+  const sbTa = el('textarea', { class: 'textarea lg', placeholder: 'O styleBlock vai aparecer aqui depois da análise. Você pode editar livremente antes de seguir.' });
+  sbTa.value = project.estetica.styleBlock;
+  sbTa.addEventListener('input', () => { project.estetica.styleBlock = sbTa.value; saveProject(); renderNavFooter(); });
+  wrap.appendChild(el('div', { class: 'field' },
+    el('label', { class: 'field-label' }, 'styleBlock (editável)'),
+    sbTa,
+    el('div', { class: 'field-hint' }, 'Esse texto será injetado no prompt de cada cena. Mínimo 30 caracteres pra avançar.'),
+  ));
+
+  return wrap;
+};
+
+// ---------- STEP 4: CENAS ----------
+function newCena(i = 0) {
+  return {
+    id: 'c_' + Date.now().toString(36) + '_' + i,
+    ordem: i,
+    textoRoteiro: '',
+    enquadramento: '',
+    prompt: '',
+    imagens: [],
+    currentImageIdx: -1,
+    status: 'pending',
+    error: null,
+  };
+}
+
+STEP_RENDERERS.cenas = function () {
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'step-header' },
+    el('h1', { class: 'step-title' }, '4. Quebra de cenas'),
+    el('p', { class: 'step-sub' }, 'A IA vai segmentar seu roteiro em cenas visuais. Você pode editar, reordenar ou adicionar manualmente.'),
+  ));
+
+  const genBtn = el('button', { class: 'btn primary' }, project.cenas.length > 0 ? '↻ Refazer com IA' : '✨ Quebrar roteiro em cenas');
+  const genStatus = el('span', { class: 'muted' });
+  genBtn.addEventListener('click', async () => {
+    if (project.cenas.length > 0 && !confirm('Isso substitui as cenas atuais. Continuar?')) return;
+    genBtn.disabled = true;
+    genStatus.innerHTML = '<span class="spin"></span> segmentando...';
+    try {
+      const out = await callClaude({
+        system: 'Você segmenta roteiros de vídeos em cenas visuais individuais. Cada cena = um plano/imagem.',
+        messages: [{ role: 'user', content: `Quebre este roteiro em cenas. Retorne APENAS um JSON array, sem markdown, sem texto antes ou depois. Formato:
+[{ "textoRoteiro": "descrição visual da cena", "enquadramento": "tipo de plano sugerido" }]
+
+Regras:
+- Cada cena deve ser visualmente distinta (mudança de ação, local, ou enquadramento).
+- Gere entre 3 e 12 cenas dependendo da extensão do roteiro.
+- textoRoteiro: 1-2 frases com ação, local, momento.
+- enquadramento: curto (close-up / plano médio / plano americano / wide shot / over-shoulder / POV etc).
+- NÃO descreva estilo visual — só o conteúdo da cena.
+
+Roteiro:
+"""
+${project.roteiro}
+"""` }],
+      });
+      const cleaned = out.trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+      const cenas = JSON.parse(cleaned);
+      project.cenas = cenas.map((c, i) => ({
+        ...newCena(i),
+        textoRoteiro: c.textoRoteiro || '',
+        enquadramento: c.enquadramento || '',
+      }));
+      saveProject();
+      renderAll();
+    } catch (e) {
+      toast('Falhou: ' + e.message, true);
+    } finally {
+      genBtn.disabled = false;
+      genStatus.textContent = '';
+    }
+  });
+
+  const addBtn = el('button', { class: 'btn sm', onclick: () => {
+    project.cenas.push(newCena(project.cenas.length));
+    saveProject();
+    renderMain();
+    renderNavFooter();
+  } }, '+ Adicionar cena');
+
+  wrap.appendChild(el('div', { class: 'btn-row', style: { marginBottom: '20px' } }, genBtn, addBtn, genStatus));
+
+  if (project.cenas.length === 0) {
+    wrap.appendChild(el('div', { class: 'card muted' }, 'Nenhuma cena ainda. Use os botões acima.'));
+    return wrap;
+  }
+
+  for (let i = 0; i < project.cenas.length; i++) {
+    const c = project.cenas[i];
+    const scene = el('div', { class: 'scene' });
+
+    const actions = el('div', { class: 'scene-actions' });
+    if (i > 0) actions.appendChild(el('button', { class: 'btn sm ghost', title: 'Subir', onclick: () => {
+      [project.cenas[i-1], project.cenas[i]] = [project.cenas[i], project.cenas[i-1]];
+      saveProject(); renderMain();
+    } }, '↑'));
+    if (i < project.cenas.length - 1) actions.appendChild(el('button', { class: 'btn sm ghost', title: 'Descer', onclick: () => {
+      [project.cenas[i+1], project.cenas[i]] = [project.cenas[i], project.cenas[i+1]];
+      saveProject(); renderMain();
+    } }, '↓'));
+    actions.appendChild(el('button', { class: 'btn sm danger', onclick: () => {
+      if (!confirm('Remover esta cena?')) return;
+      project.cenas.splice(i, 1);
+      saveProject(); renderMain(); renderNavFooter();
+    } }, 'Remover'));
+
+    scene.appendChild(el('div', { class: 'scene-head' },
+      el('span', { class: 'scene-num' }, `Cena ${i + 1}`),
+      actions,
+    ));
+
+    const textoTa = el('textarea', { class: 'textarea', placeholder: 'Descrição visual da cena' });
+    textoTa.value = c.textoRoteiro;
+    textoTa.addEventListener('input', () => { c.textoRoteiro = textoTa.value; saveProject(); });
+    scene.appendChild(el('div', { class: 'field' },
+      el('label', { class: 'field-label' }, 'Descrição da cena'),
+      textoTa,
+    ));
+
+    const enqIn = el('input', { class: 'input', placeholder: 'close-up, plano médio, wide shot...' });
+    enqIn.value = c.enquadramento;
+    enqIn.addEventListener('input', () => { c.enquadramento = enqIn.value; saveProject(); });
+    scene.appendChild(el('div', { class: 'field' },
+      el('label', { class: 'field-label' }, 'Enquadramento'),
+      enqIn,
+    ));
+
+    wrap.appendChild(scene);
+  }
+
+  return wrap;
+};
+
+// ---------- STEP 5: PROMPTS ----------
+async function generatePromptForScene(i) {
+  const c = project.cenas[i];
+  const out = await callClaude({
+    system: 'Você é um prompt engineer para modelos text-to-image (Imagen 3 / Gemini Image). Constrói prompts em inglês, descritivos, fotográficos, com termos técnicos de fotografia. Sem markdown, sem títulos.',
+    messages: [{ role: 'user', content: `Construa o prompt FINAL desta cena para um modelo text-to-image.
+
+Estrutura: comece com o styleBlock (traduzido pra inglês, mantendo a essência), depois personagem, depois ação da cena com enquadramento. Saída: APENAS o prompt em uma string contínua. Sem labels, sem aspas, sem títulos.
+
+styleBlock:
+${project.estetica.styleBlock}
+
+Personagem:
+Nome: ${project.personagem.nome}
+Descrição: ${project.personagem.descricao}
+
+Cena:
+Enquadramento: ${c.enquadramento}
+Descrição: ${c.textoRoteiro}` }],
+  });
+  c.prompt = out.trim();
+  saveProject();
+}
+
+STEP_RENDERERS.prompts = function () {
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'step-header' },
+    el('h1', { class: 'step-title' }, '5. Prompts por cena'),
+    el('p', { class: 'step-sub' }, 'A IA combina styleBlock + personagem + cena em um prompt final. Revise antes de gerar imagens.'),
+  ));
+
+  const genAllBtn = el('button', { class: 'btn primary' }, '✨ Gerar prompts pra todas');
+  const genAllStatus = el('span', { class: 'muted' });
+  genAllBtn.addEventListener('click', async () => {
+    const hasAny = project.cenas.some(c => c.prompt);
+    if (hasAny && !confirm('Sobrescrever todos os prompts existentes?')) return;
+    genAllBtn.disabled = true;
+    for (let i = 0; i < project.cenas.length; i++) {
+      genAllStatus.innerHTML = `<span class="spin"></span> ${i+1}/${project.cenas.length}`;
+      try { await generatePromptForScene(i); }
+      catch (e) { toast(`Cena ${i+1}: ${e.message}`, true); break; }
+    }
+    genAllBtn.disabled = false;
+    genAllStatus.textContent = '';
+    renderMain();
+    renderNavFooter();
+  });
+  wrap.appendChild(el('div', { class: 'btn-row', style: { marginBottom: '20px' } }, genAllBtn, genAllStatus));
+
+  for (let i = 0; i < project.cenas.length; i++) {
+    const c = project.cenas[i];
+    const scene = el('div', { class: 'scene' });
+
+    scene.appendChild(el('div', { class: 'scene-head' },
+      el('span', { class: 'scene-num' }, `Cena ${i + 1}`),
+      c.enquadramento ? el('span', { class: 'pill' }, c.enquadramento) : null,
+    ));
+    scene.appendChild(el('div', { class: 'soft', style: { fontSize: '13px', marginBottom: '8px' } }, c.textoRoteiro));
+
+    const promptTa = el('textarea', { class: 'textarea', placeholder: 'Prompt ainda não gerado. Clique no botão ou escreva manualmente.' });
+    promptTa.value = c.prompt;
+    promptTa.addEventListener('input', () => { c.prompt = promptTa.value; saveProject(); renderNavFooter(); });
+    scene.appendChild(promptTa);
+
+    const sceneBtn = el('button', { class: 'btn sm', style: { marginTop: '8px' } }, c.prompt ? '↻ Regerar prompt' : '✨ Gerar prompt');
+    const sceneStatus = el('span', { class: 'muted', style: { marginLeft: '8px' } });
+    sceneBtn.addEventListener('click', async () => {
+      sceneBtn.disabled = true;
+      sceneStatus.innerHTML = '<span class="spin"></span>';
+      try {
+        await generatePromptForScene(i);
+        promptTa.value = project.cenas[i].prompt;
+        renderNavFooter();
+      } catch (e) { toast(e.message, true); }
+      finally { sceneBtn.disabled = false; sceneStatus.textContent = ''; }
+    });
+    scene.appendChild(el('div', { style: { marginTop: '8px' } }, sceneBtn, sceneStatus));
+
+    wrap.appendChild(scene);
+  }
+
+  return wrap;
+};
+
+// ---------- STEP 6: GERAÇÃO ----------
+async function generateImageForScene(i) {
+  const c = project.cenas[i];
+  if (!c.prompt) throw new Error('Cena sem prompt');
+  c.status = 'generating';
+  c.error = null;
+  renderMain();
+  try {
+    const refs = [];
+    if (settings.imageModel.startsWith('gemini-')) {
+      if (project.personagem.refImg) refs.push(project.personagem.refImg);
+      for (const r of project.estetica.refs) refs.push(r);
+    }
+    const img = await generateImage({ prompt: c.prompt, refImages: refs });
+    c.imagens = c.imagens || [];
+    c.imagens.push({ ...img, generatedAt: new Date().toISOString(), prompt: c.prompt });
+    c.currentImageIdx = c.imagens.length - 1;
+    c.status = 'done';
+    saveProject();
+  } catch (e) {
+    c.status = 'error';
+    c.error = e.message;
+    saveProject();
+    throw e;
+  }
+}
+
+STEP_RENDERERS.geracao = function () {
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'step-header' },
+    el('h1', { class: 'step-title' }, '6. Geração de imagens'),
+    el('p', { class: 'step-sub' }, 'Cada cena gera 1 imagem. O histórico de regerações fica salvo — clique nas miniaturas pra escolher qual versão usar.'),
+  ));
+
+  const refsUsed = [];
+  if (project.personagem.refImg) refsUsed.push('personagem');
+  if (project.estetica.refs.length) refsUsed.push(`${project.estetica.refs.length} de estética`);
+  const refsInfo = settings.imageModel.startsWith('gemini-')
+    ? (refsUsed.length ? `Enviando refs: ${refsUsed.join(' + ')}` : 'Sem refs (só texto)')
+    : 'Modo texto-only (Imagen 3 não aceita refs visuais)';
+  wrap.appendChild(el('div', { class: 'card', style: { marginBottom: '20px' } },
+    el('div', { class: 'row' },
+      el('span', { class: 'pill warn' }, settings.imageModel),
+      el('span', { class: 'muted' }, refsInfo),
+    ),
+  ));
+
+  const genAllBtn = el('button', { class: 'btn primary' }, '✨ Gerar todas as cenas');
+  const genAllStatus = el('span', { class: 'muted' });
+  genAllBtn.addEventListener('click', async () => {
+    if (!confirm(`Gerar imagens pra ${project.cenas.length} cenas? Isso consome créditos.`)) return;
+    genAllBtn.disabled = true;
+    for (let i = 0; i < project.cenas.length; i++) {
+      genAllStatus.innerHTML = `<span class="spin"></span> ${i+1}/${project.cenas.length}`;
+      try { await generateImageForScene(i); }
+      catch (e) { toast(`Cena ${i+1}: ${e.message}`, true); }
+      renderMain();
+    }
+    genAllBtn.disabled = false;
+    genAllStatus.textContent = '';
+    renderNavFooter();
+  });
+  wrap.appendChild(el('div', { class: 'btn-row', style: { marginBottom: '20px' } }, genAllBtn, genAllStatus));
+
+  for (let i = 0; i < project.cenas.length; i++) {
+    const c = project.cenas[i];
+    const scene = el('div', { class: 'scene' });
+
+    const actionBtn = el('button', { class: 'btn sm' }, c.imagens && c.imagens.length > 0 ? '↻ Regerar' : 'Gerar');
+    actionBtn.addEventListener('click', async () => {
+      actionBtn.disabled = true;
+      try { await generateImageForScene(i); }
+      catch (e) { toast(e.message, true); }
+      renderMain();
+      renderNavFooter();
+    });
+
+    scene.appendChild(el('div', { class: 'scene-head' },
+      el('span', { class: 'scene-num' }, `Cena ${i + 1}`),
+      el('span', { class: 'pill' + (c.status === 'done' ? ' ok' : c.status === 'error' ? ' err' : '') }, c.status),
+      el('div', { class: 'scene-actions' }, actionBtn),
+    ));
+    scene.appendChild(el('div', { class: 'soft', style: { fontSize: '13px', marginBottom: '6px' } }, c.textoRoteiro));
+
+    if (c.status === 'generating') {
+      scene.appendChild(el('div', { class: 'scene-img-empty' }, el('span', {}, el('span', { class: 'spin' }), ' gerando...')));
+    } else if (c.imagens && c.imagens.length > 0) {
+      const idx = c.currentImageIdx >= 0 ? c.currentImageIdx : c.imagens.length - 1;
+      const img = c.imagens[idx];
+      scene.appendChild(el('img', { class: 'scene-img', src: img.dataUrl }));
+      if (c.imagens.length > 1) {
+        const history = el('div', { class: 'btn-row', style: { marginTop: '8px', flexWrap: 'wrap' } });
+        history.appendChild(el('span', { class: 'soft', style: { fontSize: '12px' } }, `${c.imagens.length} versões:`));
+        for (let j = 0; j < c.imagens.length; j++) {
+          const isCurrent = j === idx;
+          const thumb = el('div', { class: 'ref-thumb', style: { width: '56px', height: '56px', cursor: 'pointer', border: isCurrent ? '2px solid var(--accent)' : '1px solid var(--border)' }, onclick: () => { c.currentImageIdx = j; saveProject(); renderMain(); } },
+            el('img', { src: c.imagens[j].dataUrl }),
+          );
+          history.appendChild(thumb);
+        }
+        scene.appendChild(history);
+      }
+    } else if (c.status === 'error') {
+      scene.appendChild(el('div', { class: 'scene-img-empty' }, '⚠ ' + (c.error || 'erro')));
+    } else {
+      scene.appendChild(el('div', { class: 'scene-img-empty' }, 'Sem imagem ainda'));
+    }
+
+    wrap.appendChild(scene);
+  }
+
+  return wrap;
+};
+
+// ---------- STEP 7: REVIEW ----------
+function exportJson() {
+  const data = JSON.stringify(project, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `storyboard-${project.id}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadCenaImage(c, i) {
+  const idx = c.currentImageIdx >= 0 ? c.currentImageIdx : c.imagens.length - 1;
+  const img = c.imagens[idx];
+  if (!img) return;
+  const a = document.createElement('a');
+  a.href = img.dataUrl;
+  a.download = `cena-${String(i + 1).padStart(2, '0')}.png`;
+  a.click();
+}
+
+async function exportAllImages() {
+  for (let i = 0; i < project.cenas.length; i++) {
+    const c = project.cenas[i];
+    if (c.imagens && c.imagens.length > 0) {
+      downloadCenaImage(c, i);
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }
+}
+
+async function copyAllPrompts() {
+  const text = project.cenas.map((c, i) => `--- Cena ${i + 1} (${c.enquadramento || ''}) ---\n${c.prompt || ''}`).join('\n\n');
+  try { await navigator.clipboard.writeText(text); toast('Prompts copiados'); }
+  catch { toast('Falhou ao copiar', true); }
+}
+
+STEP_RENDERERS.review = function () {
+  const wrap = el('div');
+  wrap.appendChild(el('div', { class: 'step-header' },
+    el('h1', { class: 'step-title' }, '7. Review'),
+    el('p', { class: 'step-sub' }, 'Resumo final. Baixe imagens, copie prompts ou exporte o projeto inteiro.'),
+  ));
+
+  wrap.appendChild(el('div', { class: 'card' },
+    el('div', {}, el('strong', {}, 'Personagem: '), project.personagem.nome),
+    el('div', { class: 'soft', style: { marginTop: '8px', whiteSpace: 'pre-wrap', fontSize: '13px' } }, project.personagem.descricao),
+  ));
+
+  wrap.appendChild(el('div', { class: 'card', style: { marginTop: '12px' } },
+    el('div', {}, el('strong', {}, 'styleBlock')),
+    el('div', { class: 'soft', style: { marginTop: '8px', whiteSpace: 'pre-wrap', fontSize: '13px' } }, project.estetica.styleBlock),
+  ));
+
+  wrap.appendChild(el('div', { class: 'btn-row', style: { marginTop: '20px', marginBottom: '20px' } },
+    el('button', { class: 'btn', onclick: exportJson }, '⬇ Baixar projeto (JSON)'),
+    el('button', { class: 'btn', onclick: exportAllImages }, '⬇ Baixar imagens'),
+    el('button', { class: 'btn', onclick: copyAllPrompts }, '📋 Copiar prompts'),
+  ));
+
+  for (let i = 0; i < project.cenas.length; i++) {
+    const c = project.cenas[i];
+    const scene = el('div', { class: 'scene' });
+    scene.appendChild(el('div', { class: 'scene-head' },
+      el('span', { class: 'scene-num' }, `Cena ${i + 1}`),
+      c.enquadramento ? el('span', { class: 'pill' }, c.enquadramento) : null,
+      el('div', { class: 'scene-actions' },
+        c.imagens && c.imagens.length > 0 ? el('button', { class: 'btn sm', onclick: () => downloadCenaImage(c, i) }, '⬇') : null,
+      ),
+    ));
+    scene.appendChild(el('div', { class: 'soft', style: { fontSize: '13px', marginBottom: '8px' } }, c.textoRoteiro));
+    if (c.imagens && c.imagens.length > 0) {
+      const idx = c.currentImageIdx >= 0 ? c.currentImageIdx : c.imagens.length - 1;
+      scene.appendChild(el('img', { class: 'scene-img', src: c.imagens[idx].dataUrl }));
+    } else {
+      scene.appendChild(el('div', { class: 'scene-img-empty' }, 'Sem imagem'));
+    }
+    wrap.appendChild(scene);
+  }
+
+  return wrap;
+};
+
+// =====================================================================
+// SETTINGS MODAL
+// =====================================================================
+function openSettings() {
+  const root = $('#modal-root');
+  root.innerHTML = '';
+
+  const akeyIn = el('input', { class: 'input', type: 'password', placeholder: 'sk-ant-...' });
+  akeyIn.value = settings.anthropicKey;
+  const gkeyIn = el('input', { class: 'input', type: 'password', placeholder: 'AIza...' });
+  gkeyIn.value = settings.googleKey;
+
+  const cmodelSel = el('select', { class: 'select' },
+    ...CLAUDE_MODELS.map(m => el('option', { value: m, selected: m === settings.claudeModel }, m)),
+  );
+  const imodelSel = el('select', { class: 'select' },
+    ...IMAGE_MODELS.map(m => el('option', { value: m.id, selected: m.id === settings.imageModel }, m.label)),
+  );
+  const arSel = el('select', { class: 'select' },
+    ...['16:9','9:16','1:1','4:3','3:4'].map(a => el('option', { value: a, selected: a === settings.aspectRatio }, a)),
+  );
+
+  const modal = el('div', { class: 'modal' },
+    el('h2', { class: 'modal-title' }, 'Settings'),
+    el('div', { class: 'field' }, el('label', { class: 'field-label' }, 'Anthropic API key'), akeyIn),
+    el('div', { class: 'field' }, el('label', { class: 'field-label' }, 'Google AI API key'), gkeyIn),
+    el('div', { class: 'field' }, el('label', { class: 'field-label' }, 'Modelo Claude (análise de texto/imagem)'), cmodelSel),
+    el('div', { class: 'field' }, el('label', { class: 'field-label' }, 'Modelo de geração de imagem'), imodelSel),
+    el('div', { class: 'field' }, el('label', { class: 'field-label' }, 'Aspect ratio (Imagen)'), arSel),
+    el('div', { class: 'btn-row right' },
+      el('button', { class: 'btn ghost', onclick: () => { root.innerHTML = ''; } }, 'Cancelar'),
+      el('button', { class: 'btn primary', onclick: () => {
+        settings.anthropicKey = akeyIn.value.trim();
+        settings.googleKey    = gkeyIn.value.trim();
+        settings.claudeModel  = cmodelSel.value;
+        settings.imageModel   = imodelSel.value;
+        settings.aspectRatio  = arSel.value;
+        saveSettings();
+        root.innerHTML = '';
+        toast('Settings salvos');
+      } }, 'Salvar'),
+    ),
+  );
+
+  const backdrop = el('div', { class: 'modal-backdrop', onclick: (e) => { if (e.target === backdrop) root.innerHTML = ''; } }, modal);
+  root.appendChild(backdrop);
+}
+
+// =====================================================================
+// INIT
+// =====================================================================
+function init() {
+  $('#btn-settings').addEventListener('click', openSettings);
+  $('#btn-new-project').addEventListener('click', () => {
+    if (!confirm('Descartar o projeto atual e começar um novo?')) return;
+    project = emptyProject();
+    saveProject();
+    renderAll();
+  });
+  $('#btn-prev').addEventListener('click', () => goToStep(project.step - 1));
+  $('#btn-next').addEventListener('click', () => goToStep(project.step + 1));
+  renderAll();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
