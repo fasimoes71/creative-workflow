@@ -349,14 +349,65 @@ function imgPart(img) {
 // =====================================================================
 // API: GOOGLE (Gemini Image / Imagen)
 // =====================================================================
+function rankImageModelName(name) {
+  const n = (name || '').toLowerCase();
+  if (n.includes('imagen-4') && n.includes('ultra')) return 0;
+  if (n.includes('imagen-4') && n.includes('fast')) return 2;
+  if (n.includes('imagen-4')) return 1;
+  if (n.includes('imagen-3') && !n.includes('fast')) return 3;
+  if (n.includes('imagen-3')) return 4;
+  if (n.includes('imagen')) return 5;
+  if (n.includes('gemini') && n.includes('image') && n.includes('2.5') && !n.includes('preview')) return 6;
+  if (n.includes('gemini') && n.includes('image') && n.includes('2.5')) return 7;
+  if (n.includes('gemini') && n.includes('image')) return 8;
+  if (n.includes('gemini') && n.includes('flash-exp')) return 9;
+  return 99;
+}
+
+async function discoverBestImageModel() {
+  if (!settings.googleKey) throw new Error('Falta chave Google');
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(settings.googleKey)}`);
+  if (!resp.ok) throw new Error('ListModels ' + resp.status);
+  const data = await resp.json();
+  const ranked = (data.models || [])
+    .filter(m => {
+      const methods = m.supportedGenerationMethods || [];
+      return methods.includes('generateContent') || methods.includes('predict');
+    })
+    .map(m => ({ id: (m.name || '').replace(/^models\//, ''), rank: rankImageModelName(m.name || '') }))
+    .filter(m => m.rank < 99)
+    .sort((a, b) => a.rank - b.rank);
+  if (!ranked.length) throw new Error('Sua chave não tem nenhum modelo de imagem disponível');
+  return ranked[0].id;
+}
+
 async function generateImage({ prompt, refImages = [] }) {
   if (!settings.googleKey) throw new Error('Falta a chave do Google AI em Settings');
-  const model = settings.imageModel;
+  return await tryGenerateImage(prompt, refImages, false);
+}
 
-  if (model.startsWith('gemini-')) {
-    return generateImageGemini({ prompt, refImages, model });
+async function tryGenerateImage(prompt, refImages, isRetry) {
+  const model = settings.imageModel;
+  try {
+    if (model.startsWith('gemini-')) return await generateImageGemini({ prompt, refImages, model });
+    return await generateImageImagen({ prompt, model });
+  } catch (e) {
+    const msg = String(e.message || '');
+    const is404 = /\b404\b|not found|not supported|not available/i.test(msg);
+    if (is404 && !isRetry) {
+      toast(`"${model}" indisponível — buscando alternativa...`);
+      let next;
+      try { next = await discoverBestImageModel(); }
+      catch (e2) { throw new Error(e.message + ' | auto-discovery: ' + e2.message); }
+      if (next && next !== model) {
+        settings.imageModel = next;
+        saveSettings();
+        toast('Auto-selecionado: ' + next);
+        return await tryGenerateImage(prompt, refImages, true);
+      }
+    }
+    throw e;
   }
-  return generateImageImagen({ prompt, model });
 }
 
 async function generateImageGemini({ prompt, refImages, model }) {
