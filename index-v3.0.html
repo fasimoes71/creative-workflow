@@ -201,6 +201,54 @@ const IMAGE_MODELS = [
 
 const STORAGE_KEY = 'storyboard_v1';
 const SETTINGS_KEY = 'storyboard_settings_v1';
+const IDB_NAME = 'storyboard_db_v1';
+const IDB_STORE = 'images';
+
+// =====================================================================
+// INDEXEDDB (large image blobs)
+// =====================================================================
+let _idbPromise = null;
+function openIdb() {
+  if (_idbPromise) return _idbPromise;
+  _idbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE, { keyPath: 'id' });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return _idbPromise;
+}
+async function idbPut(record) {
+  const db = await openIdb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(record);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function idbGet(id) {
+  const db = await openIdb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).get(id);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbClear() {
+  const db = await openIdb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).clear();
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+function newImageId() { return 'img_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); }
 
 // =====================================================================
 // STATE
@@ -223,29 +271,38 @@ let settings = loadSettings() || { ...DEFAULT_SETTINGS };
 // =====================================================================
 // PERSISTENCE
 // =====================================================================
-function saveProject() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
-    flashAutosave();
-  } catch (e) {
-    // Quota — trim image history to just current version per scene
-    try {
-      for (const c of (project.cenas || [])) {
-        if (c.imagens && c.imagens.length > 1) {
-          const idx = c.currentImageIdx >= 0 ? c.currentImageIdx : c.imagens.length - 1;
-          c.imagens = [c.imagens[idx]];
-          c.currentImageIdx = 0;
-        }
-      }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
-      toast('Espaço cheio: histórico de regerações reduzido. Baixe imagens importantes.', true);
-    } catch (e2) {
-      // Still too big — drop all images, keep prompts/text
-      for (const c of (project.cenas || [])) { c.imagens = []; c.currentImageIdx = -1; c.status = 'pending'; }
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(project)); } catch {}
-      toast('Espaço esgotado: imagens não foram salvas. Baixe antes de recarregar.', true);
+function projectForStorage() {
+  const p = JSON.parse(JSON.stringify(project));
+  for (const c of (p.cenas || [])) {
+    if (c.imagens) {
+      c.imagens = c.imagens.map(img => ({ id: img.id, generatedAt: img.generatedAt, prompt: img.prompt, mimeType: img.mimeType }));
     }
   }
+  return p;
+}
+
+function saveProject() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(projectForStorage()));
+    flashAutosave();
+  } catch (e) {
+    toast('Erro ao salvar projeto: ' + e.message, true);
+  }
+}
+
+async function hydrateProject() {
+  for (const c of (project.cenas || [])) {
+    if (!c.imagens) continue;
+    for (const ref of c.imagens) {
+      if (ref.id && !ref.dataUrl) {
+        try {
+          const rec = await idbGet(ref.id);
+          if (rec) { ref.dataUrl = rec.dataUrl; ref.base64 = rec.base64; ref.mimeType = rec.mimeType; }
+        } catch {}
+      }
+    }
+  }
+  renderMain();
 }
 function loadProject()  { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)  || 'null'); } catch { return null; } }
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch(e) { console.warn(e); } }
@@ -976,8 +1033,10 @@ async function generateImageForScene(i) {
       for (const r of project.estetica.refs) refs.push(r);
     }
     const img = await generateImage({ prompt: c.prompt, refImages: refs });
+    const record = { id: newImageId(), ...img, generatedAt: new Date().toISOString(), prompt: c.prompt };
+    await idbPut(record);
     c.imagens = c.imagens || [];
-    c.imagens.push({ ...img, generatedAt: new Date().toISOString(), prompt: c.prompt });
+    c.imagens.push(record);
     c.currentImageIdx = c.imagens.length - 1;
     c.status = 'done';
     saveProject();
@@ -1289,8 +1348,9 @@ function openSettings() {
 // =====================================================================
 function init() {
   $('#btn-settings').addEventListener('click', openSettings);
-  $('#btn-new-project').addEventListener('click', () => {
+  $('#btn-new-project').addEventListener('click', async () => {
     if (!confirm('Descartar o projeto atual e começar um novo?')) return;
+    try { await idbClear(); } catch {}
     project = emptyProject();
     saveProject();
     renderAll();
@@ -1298,6 +1358,7 @@ function init() {
   $('#btn-prev').addEventListener('click', () => goToStep(project.step - 1));
   $('#btn-next').addEventListener('click', () => goToStep(project.step + 1));
   renderAll();
+  hydrateProject().catch(e => console.warn('hydrate failed', e));
 }
 
 document.addEventListener('DOMContentLoaded', init);
