@@ -1121,40 +1121,70 @@ function openSettings() {
   imodelIn.value = settings.imageModel;
 
   const listBtn = el('button', { class: 'btn sm' }, '🔍 Listar modelos da minha chave');
-  const listOut = el('div', { class: 'soft mono', style: { marginTop: '8px', maxHeight: '180px', overflow: 'auto' } });
-  listBtn.addEventListener('click', async () => {
+  const listOut = el('div', { class: 'soft mono', style: { marginTop: '8px', maxHeight: '240px', overflow: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '8px' } });
+
+  async function fetchAndShowModels() {
     const key = gkeyIn.value.trim();
-    if (!key) { toast('Cola a chave do Google primeiro', true); return; }
+    if (!key) { listOut.textContent = 'Cola a chave do Google e clica em "Listar".'; return; }
     listBtn.disabled = true;
     listOut.textContent = 'consultando...';
     try {
       const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
       if (!resp.ok) throw new Error(resp.status + ': ' + (await resp.text()).slice(0, 200));
       const data = await resp.json();
-      const imageish = (data.models || []).filter(m => {
-        const n = (m.name || '').toLowerCase();
+      const models = (data.models || []).filter(m => {
         const methods = m.supportedGenerationMethods || [];
-        return (n.includes('imagen') || n.includes('image') || (methods.includes('generateContent') && n.includes('flash')))
-          && (methods.includes('generateContent') || methods.includes('predict'));
+        return methods.includes('generateContent') || methods.includes('predict');
       });
+
+      function score(m) {
+        const n = (m.name || '').toLowerCase();
+        if (n.includes('imagen')) return 0;
+        if (n.includes('image')) return 1;
+        if (n.includes('flash')) return 2;
+        if (n.includes('pro')) return 3;
+        return 4;
+      }
+      models.sort((a, b) => score(a) - score(b));
+
       listOut.innerHTML = '';
-      if (!imageish.length) {
-        listOut.textContent = 'Nenhum modelo de imagem disponível com essa chave.';
+      if (!models.length) {
+        listOut.textContent = 'Nenhum modelo encontrado pra essa chave.';
         return;
       }
-      for (const m of imageish) {
+      for (const m of models) {
         const id = (m.name || '').replace(/^models\//, '');
-        const row = el('div', { style: { cursor: 'pointer', padding: '4px 6px', borderRadius: '4px' }, onclick: () => { imodelIn.value = id; toast('Modelo selecionado: ' + id); } }, '✓ ' + id);
+        const methods = m.supportedGenerationMethods || [];
+        const n = id.toLowerCase();
+        let kind = '';
+        if (n.includes('imagen')) kind = 'imagen (texto-only)';
+        else if (n.includes('image')) kind = 'multimodal (aceita refs)';
+        else if (methods.includes('predict')) kind = 'predict';
+        else kind = 'texto';
+        const isImage = n.includes('imagen') || n.includes('image');
+        const row = el('div', {
+          style: { cursor: 'pointer', padding: '5px 8px', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', gap: '12px', color: isImage ? 'var(--accent)' : 'var(--text-dim)' },
+          onclick: () => { imodelIn.value = id; toast('Selecionado: ' + id); },
+        },
+          el('span', {}, (isImage ? '★ ' : '  ') + id),
+          el('span', { class: 'soft', style: { fontSize: '11px' } }, kind),
+        );
         row.addEventListener('mouseenter', () => row.style.background = 'var(--surface-2)');
         row.addEventListener('mouseleave', () => row.style.background = '');
         listOut.appendChild(row);
       }
+      // Header
+      const header = el('div', { class: 'soft', style: { fontSize: '11px', marginBottom: '6px' } }, `${models.length} modelos. Clique para selecionar. ★ = gera imagem.`);
+      listOut.insertBefore(header, listOut.firstChild);
     } catch (e) {
       listOut.textContent = 'erro: ' + e.message;
     } finally {
       listBtn.disabled = false;
     }
-  });
+  }
+  listBtn.addEventListener('click', fetchAndShowModels);
+  // Auto-run on open if there's already a key
+  if (settings.googleKey) setTimeout(fetchAndShowModels, 100);
 
   const arSel = el('select', { class: 'select' },
     ...['16:9','9:16','1:1','4:3','3:4'].map(a => el('option', { value: a, selected: a === settings.aspectRatio }, a)),
