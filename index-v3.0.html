@@ -178,7 +178,7 @@ const DEFAULT_SETTINGS = {
   anthropicKey: '',
   googleKey: '',
   claudeModel: 'claude-sonnet-4-5-20250929',
-  imageModel: 'gemini-2.5-flash-image-preview',
+  imageModel: 'gemini-2.0-flash-exp',
   aspectRatio: '16:9',
 };
 
@@ -188,8 +188,12 @@ const CLAUDE_MODELS = [
   'claude-haiku-4-5-20251001',
 ];
 const IMAGE_MODELS = [
-  { id: 'gemini-2.5-flash-image-preview', label: 'Gemini 2.5 Flash Image (aceita refs)' },
-  { id: 'imagen-3.0-generate-002',        label: 'Imagen 3 (texto-only)' },
+  { id: 'gemini-2.5-flash-image',              label: 'Gemini 2.5 Flash Image (aceita refs)' },
+  { id: 'gemini-2.5-flash-image-preview',      label: 'Gemini 2.5 Flash Image Preview (aceita refs)' },
+  { id: 'gemini-2.0-flash-exp',                label: 'Gemini 2.0 Flash Exp (aceita refs)' },
+  { id: 'gemini-2.0-flash-preview-image-generation', label: 'Gemini 2.0 Flash Preview Image Gen (aceita refs)' },
+  { id: 'imagen-3.0-generate-002',             label: 'Imagen 3 (texto-only)' },
+  { id: 'imagen-4.0-generate-001',             label: 'Imagen 4 (texto-only)' },
 ];
 
 const STORAGE_KEY = 'storyboard_v1';
@@ -529,20 +533,28 @@ STEP_RENDERERS.personagem = function () {
   });
   descField.appendChild(el('div', { class: 'btn-row', style: { marginTop: '8px' } }, expandBtn, expandStatus));
 
-  // Ref do personagem (opcional)
+  // Ref do personagem (upload ou gerar com IA)
   const refField = el('div', { class: 'field' },
-    el('label', { class: 'field-label' }, 'Referência visual do personagem (opcional)'),
-    el('div', { class: 'field-hint' }, 'Se você tem uma foto/desenho que define o rosto/aparência. Será enviada como input pro gerador de imagem.'),
+    el('label', { class: 'field-label' }, 'Imagem de referência do personagem'),
+    el('div', { class: 'field-hint' }, 'Sobe uma foto/desenho que define o rosto, OU gera com IA a partir da descrição. Essa imagem é enviada como ref pra manter consistência nas cenas.'),
   );
   const refWrap = el('div', { class: 'refs-grid' });
+  const refActions = el('div', { class: 'btn-row', style: { marginTop: '12px' } });
+  const refStatus = el('span', { class: 'muted' });
+
   function renderRef() {
     refWrap.innerHTML = '';
+    refActions.innerHTML = '';
     if (project.personagem.refImg) {
       const thumb = el('div', { class: 'ref-thumb' },
         el('img', { src: project.personagem.refImg.dataUrl }),
         el('button', { class: 'remove', title: 'Remover', onclick: () => { project.personagem.refImg = null; saveProject(); renderRef(); } }, '×'),
       );
       refWrap.appendChild(thumb);
+      const regenBtn = el('button', { class: 'btn sm' }, '↻ Regerar com IA');
+      regenBtn.addEventListener('click', () => generateCharacterImage(regenBtn));
+      refActions.appendChild(regenBtn);
+      refActions.appendChild(refStatus);
     } else {
       const upBtn = el('label', { class: 'ref-upload' }, '+ Upload');
       const file = el('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
@@ -555,10 +567,41 @@ STEP_RENDERERS.personagem = function () {
       });
       upBtn.appendChild(file);
       refWrap.appendChild(upBtn);
+
+      const genBtn = el('button', { class: 'btn sm primary' }, '✨ Gerar com IA');
+      genBtn.addEventListener('click', () => generateCharacterImage(genBtn));
+      refActions.appendChild(genBtn);
+      refActions.appendChild(refStatus);
     }
   }
+
+  async function generateCharacterImage(btn) {
+    if (!project.personagem.descricao.trim()) { toast('Escreve a descrição do personagem primeiro', true); return; }
+    btn.disabled = true;
+    refStatus.innerHTML = '<span class="spin"></span> gerando...';
+    try {
+      // Build a portrait prompt — use styleBlock if estética já foi feita
+      let prompt = `Portrait reference of a character. ${project.personagem.descricao}. Neutral pose, clear face, plain background, sharp focus, well-lit. Realistic photographic style.`;
+      if (project.estetica.styleBlock && project.estetica.styleBlock.trim().length > 30) {
+        prompt = `${project.estetica.styleBlock}\n\nCharacter portrait reference (neutral pose, clear face, plain background): ${project.personagem.descricao}`;
+      }
+      const img = await generateImage({ prompt, refImages: [] });
+      project.personagem.refImg = img;
+      saveProject();
+      renderRef();
+      refStatus.textContent = 'pronto';
+      setTimeout(() => { refStatus.textContent = ''; }, 1500);
+    } catch (e) {
+      toast(e.message, true);
+      refStatus.textContent = '';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   renderRef();
   refField.appendChild(refWrap);
+  refField.appendChild(refActions);
   wrap.appendChild(refField);
 
   return wrap;
@@ -1070,9 +1113,49 @@ function openSettings() {
   const cmodelSel = el('select', { class: 'select' },
     ...CLAUDE_MODELS.map(m => el('option', { value: m, selected: m === settings.claudeModel }, m)),
   );
-  const imodelSel = el('select', { class: 'select' },
-    ...IMAGE_MODELS.map(m => el('option', { value: m.id, selected: m.id === settings.imageModel }, m.label)),
+
+  const imodelList = el('datalist', { id: 'image-models-list' },
+    ...IMAGE_MODELS.map(m => el('option', { value: m.id }, m.label)),
   );
+  const imodelIn = el('input', { class: 'input', list: 'image-models-list', placeholder: 'ex: gemini-2.0-flash-exp' });
+  imodelIn.value = settings.imageModel;
+
+  const listBtn = el('button', { class: 'btn sm' }, '🔍 Listar modelos da minha chave');
+  const listOut = el('div', { class: 'soft mono', style: { marginTop: '8px', maxHeight: '180px', overflow: 'auto' } });
+  listBtn.addEventListener('click', async () => {
+    const key = gkeyIn.value.trim();
+    if (!key) { toast('Cola a chave do Google primeiro', true); return; }
+    listBtn.disabled = true;
+    listOut.textContent = 'consultando...';
+    try {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
+      if (!resp.ok) throw new Error(resp.status + ': ' + (await resp.text()).slice(0, 200));
+      const data = await resp.json();
+      const imageish = (data.models || []).filter(m => {
+        const n = (m.name || '').toLowerCase();
+        const methods = m.supportedGenerationMethods || [];
+        return (n.includes('imagen') || n.includes('image') || (methods.includes('generateContent') && n.includes('flash')))
+          && (methods.includes('generateContent') || methods.includes('predict'));
+      });
+      listOut.innerHTML = '';
+      if (!imageish.length) {
+        listOut.textContent = 'Nenhum modelo de imagem disponível com essa chave.';
+        return;
+      }
+      for (const m of imageish) {
+        const id = (m.name || '').replace(/^models\//, '');
+        const row = el('div', { style: { cursor: 'pointer', padding: '4px 6px', borderRadius: '4px' }, onclick: () => { imodelIn.value = id; toast('Modelo selecionado: ' + id); } }, '✓ ' + id);
+        row.addEventListener('mouseenter', () => row.style.background = 'var(--surface-2)');
+        row.addEventListener('mouseleave', () => row.style.background = '');
+        listOut.appendChild(row);
+      }
+    } catch (e) {
+      listOut.textContent = 'erro: ' + e.message;
+    } finally {
+      listBtn.disabled = false;
+    }
+  });
+
   const arSel = el('select', { class: 'select' },
     ...['16:9','9:16','1:1','4:3','3:4'].map(a => el('option', { value: a, selected: a === settings.aspectRatio }, a)),
   );
@@ -1082,7 +1165,13 @@ function openSettings() {
     el('div', { class: 'field' }, el('label', { class: 'field-label' }, 'Anthropic API key'), akeyIn),
     el('div', { class: 'field' }, el('label', { class: 'field-label' }, 'Google AI API key'), gkeyIn),
     el('div', { class: 'field' }, el('label', { class: 'field-label' }, 'Modelo Claude (análise de texto/imagem)'), cmodelSel),
-    el('div', { class: 'field' }, el('label', { class: 'field-label' }, 'Modelo de geração de imagem'), imodelSel),
+    el('div', { class: 'field' },
+      el('label', { class: 'field-label' }, 'Modelo de geração de imagem'),
+      imodelIn, imodelList,
+      el('div', { class: 'field-hint' }, 'Pode digitar qualquer ID que o Google aceitar. Modelos começando com "gemini-" suportam refs visuais; "imagen-" é texto-only.'),
+      el('div', { class: 'btn-row', style: { marginTop: '8px' } }, listBtn),
+      listOut,
+    ),
     el('div', { class: 'field' }, el('label', { class: 'field-label' }, 'Aspect ratio (Imagen)'), arSel),
     el('div', { class: 'btn-row right' },
       el('button', { class: 'btn ghost', onclick: () => { root.innerHTML = ''; } }, 'Cancelar'),
@@ -1090,7 +1179,7 @@ function openSettings() {
         settings.anthropicKey = akeyIn.value.trim();
         settings.googleKey    = gkeyIn.value.trim();
         settings.claudeModel  = cmodelSel.value;
-        settings.imageModel   = imodelSel.value;
+        settings.imageModel   = imodelIn.value.trim();
         settings.aspectRatio  = arSel.value;
         saveSettings();
         root.innerHTML = '';
