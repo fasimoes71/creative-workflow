@@ -178,9 +178,11 @@ const DEFAULT_SETTINGS = {
   anthropicKey: '',
   googleKey: '',
   claudeModel: 'claude-sonnet-4-5-20250929',
-  imageModel: 'gemini-2.0-flash-exp',
+  imageModel: 'imagen-3.0-generate-002',
   aspectRatio: '16:9',
 };
+
+const BROKEN_DEFAULTS = ['gemini-2.0-flash-exp', 'gemini-2.5-flash-image-preview'];
 
 const CLAUDE_MODELS = [
   'claude-opus-4-5',
@@ -188,12 +190,13 @@ const CLAUDE_MODELS = [
   'claude-haiku-4-5-20251001',
 ];
 const IMAGE_MODELS = [
+  { id: 'imagen-3.0-generate-002',             label: 'Imagen 3 (texto-only, universal)' },
+  { id: 'imagen-4.0-generate-001',             label: 'Imagen 4 (texto-only)' },
+  { id: 'imagen-4.0-fast-generate-001',        label: 'Imagen 4 Fast (texto-only)' },
   { id: 'gemini-2.5-flash-image',              label: 'Gemini 2.5 Flash Image (aceita refs)' },
   { id: 'gemini-2.5-flash-image-preview',      label: 'Gemini 2.5 Flash Image Preview (aceita refs)' },
   { id: 'gemini-2.0-flash-exp',                label: 'Gemini 2.0 Flash Exp (aceita refs)' },
   { id: 'gemini-2.0-flash-preview-image-generation', label: 'Gemini 2.0 Flash Preview Image Gen (aceita refs)' },
-  { id: 'imagen-3.0-generate-002',             label: 'Imagen 3 (texto-only)' },
-  { id: 'imagen-4.0-generate-001',             label: 'Imagen 4 (texto-only)' },
 ];
 
 const STORAGE_KEY = 'storyboard_v1';
@@ -246,7 +249,15 @@ function saveProject() {
 }
 function loadProject()  { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)  || 'null'); } catch { return null; } }
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch(e) { console.warn(e); } }
-function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch { return null; } }
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+    if (s && BROKEN_DEFAULTS.includes(s.imageModel)) {
+      s.imageModel = DEFAULT_SETTINGS.imageModel;
+    }
+    return s;
+  } catch { return null; }
+}
 
 let autosaveTimer = null;
 function flashAutosave() {
