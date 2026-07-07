@@ -9,6 +9,18 @@
         if (window.self !== window.top || new URLSearchParams(location.search).has('embed')) {
             document.documentElement.classList.add('embedded');
         }
+        // ── Sync API keys with tropicOS central storage (tropicos_admin_keys)
+        (function syncTropicosKeys() {
+            try {
+                var central = JSON.parse(localStorage.getItem('tropicos_admin_keys') || '{}');
+                if (!central || (!central.anthropic && !central.gemini && !central.openai)) return;
+                var local = JSON.parse(localStorage.getItem('tropicos_skills_v2') || '{}');
+                if (central.anthropic) local.apiKey       = central.anthropic;
+                if (central.openai)    local.apiKeyOpenAI = central.openai;
+                if (central.gemini)    local.apiKeyGemini = central.gemini;
+                localStorage.setItem('tropicos_skills_v2', JSON.stringify(local));
+            } catch (e) {}
+        })();
     </script>
     <style>
         /* ── FONTS ── */
@@ -50,11 +62,15 @@
         .shell.collapsed { grid-template-columns: var(--sidebar-w-sm) 1fr; }
 
         /* ── EMBED MODE — tool lives inside the tropicOS shell.
-           Hide the tool's own topbar (the shell provides it), but keep
-           the sidebar so the user can switch skills without leaving. ── */
+           Hide topbar AND sidebar — each skill is its own page in tropicOS
+           and is reached via the library, not through internal navigation. ── */
         html.embedded body { background: var(--bg-canvas); }
-        html.embedded .shell { grid-template-rows: 1fr; grid-template-areas: "sidebar main"; }
-        html.embedded .topbar { display: none !important; }
+        html.embedded .shell { grid-template-rows: 1fr; grid-template-columns: 1fr; grid-template-areas: "main"; }
+        html.embedded .topbar,
+        html.embedded .sidebar { display: none !important; }
+        html.embedded .main { grid-area: main; }
+        html.embedded .active-bar { display: none !important; }
+        html.embedded .sidebar-foot { display: none !important; }
 
         /* ── TOPBAR ── */
         .topbar { grid-area: topbar; background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; padding: 0 20px 0 0; z-index: 200; }
@@ -213,7 +229,23 @@
         .chat-view { display: none; flex: 1; flex-direction: column; overflow: hidden; }
         .view.on .chat-view { display: flex; }
         #viewSkill { overflow: hidden; }
-        .chat-wrap { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+        .chat-wrap { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-width: 0; }
+
+        /* ── CONVERSATION HISTORY SIDEBAR (left of chat) ── */
+        .skill-body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+        .conv-sidebar { width: 220px; flex-shrink: 0; border-right: 1px solid var(--border-subtle); overflow-y: auto; padding: 14px 10px; background: var(--bg-surface); scrollbar-width: thin; scrollbar-color: var(--border-default) transparent; }
+        .conv-sidebar-hd { font-size: 10px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); padding: 4px 10px 10px; display: flex; align-items: center; justify-content: space-between; }
+        .conv-sidebar-hd-count { font-size: 10px; font-weight: 400; color: var(--text-tertiary); }
+        .conv-list { display: flex; flex-direction: column; gap: 2px; }
+        .conv-item { display: flex; flex-direction: column; gap: 3px; padding: 9px 10px; border-radius: 6px; cursor: pointer; background: none; border: 1px solid transparent; text-align: left; transition: background 140ms cubic-bezier(0.2,0,0,1), border-color 140ms cubic-bezier(0.2,0,0,1); width: 100%; font-family: inherit; position: relative; }
+        .conv-item:hover { background: var(--bg-hover); border-color: var(--border-subtle); }
+        .conv-item-title { font-size: 12.5px; color: var(--text-primary); line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; padding-right: 18px; }
+        .conv-item-time { font-size: 10px; color: var(--text-tertiary); }
+        .conv-item-del { position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; border: none; background: none; padding: 0; cursor: pointer; color: var(--text-tertiary); opacity: 0; border-radius: 3px; display: flex; align-items: center; justify-content: center; }
+        .conv-item:hover .conv-item-del { opacity: 1; }
+        .conv-item-del:hover { color: var(--danger, #e64a4a); background: var(--bg-surface); }
+        .conv-empty { font-size: 11.5px; color: var(--text-tertiary); padding: 12px 10px; line-height: 1.45; font-style: italic; }
+        @media (max-width: 640px) { .conv-sidebar { display: none; } }
         .chat-messages { flex: 1; overflow-y: auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 14px; }
         .chat-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 40px; }
         .chat-empty-icon { font-size: 22px; opacity: 0.2; }
@@ -229,6 +261,41 @@
         .hint-chip { font-size: 11.5px; padding: 4px 11px; border-radius: var(--r-pill); border: 1px solid var(--border-subtle); background: var(--bg-canvas); color: var(--text-secondary); cursor: pointer; transition: all var(--fast); font-family: var(--font-ui); }
         .hint-chip:hover { background: var(--text-primary); color: var(--bg-canvas); border-color: var(--text-primary); }
         .hint-chip-off { font-size: 11.5px; padding: 4px 11px; border-radius: var(--r-pill); border: 1px solid var(--border-subtle); background: var(--bg-canvas); color: var(--text-tertiary); cursor: default; }
+
+        /* ── Xploring abertura (onboarding) ── */
+        .chat-empty.xplo-empty { justify-content: flex-start; align-items: stretch; padding: 30px 28px 48px; overflow-y: auto; }
+        .xplo { width: 100%; max-width: 760px; margin: 0 auto; text-align: left; animation: xploRise .5s var(--ease) both; }
+        @keyframes xploRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        .xplo-eye { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-tertiary); display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .xplo-eye .d { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 7px var(--accent); }
+        .xplo-h { font-family: var(--font-editorial); font-weight: 300; font-size: 1.7rem; line-height: 1.05; letter-spacing: -.02em; max-width: 20ch; color: var(--text-primary); }
+        .xplo-h em { font-style: normal; border-bottom: 2px solid var(--accent); padding-bottom: 1px; }
+        .xplo-lede { font-family: var(--font-editorial); font-weight: 300; font-size: 1.1rem; line-height: 1.3; color: var(--text-tertiary); max-width: 48ch; margin-top: 10px; }
+        .xplo-lenses { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+        .xplo-lpill { font-family: var(--mono); font-size: 10px; padding: 4px 10px; border: 1px solid var(--border-default); border-radius: var(--r-pill); color: var(--text-secondary); background: var(--bg-surface); display: flex; align-items: center; gap: 6px; }
+        .xplo-lpill i { width: 6px; height: 6px; border-radius: 50%; }
+        .xplo-contract { display: grid; grid-template-columns: 1fr 1fr 1fr; margin-top: 22px; border: 1px solid var(--border-default); border-radius: var(--r-lg); overflow: hidden; }
+        .xplo-contract > div { padding: 14px 15px; border-right: 1px solid var(--border-default); }
+        .xplo-contract > div:nth-child(1), .xplo-contract > div:nth-child(2) { background: #000; color: #fff; border-right-color: rgba(255,255,255,.14); }
+        .xplo-contract > div:last-child { border-right: none; background: var(--accent); color: #111; }
+        .xplo-contract .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 8px; }
+        .xplo-contract > div:nth-child(1) .k, .xplo-contract > div:nth-child(2) .k { color: var(--accent); }
+        .xplo-contract > div:last-child .k { color: rgba(0,0,0,.55); }
+        .xplo-contract h4 { font-family: var(--font-editorial); font-weight: 400; font-size: .98rem; line-height: 1.2; letter-spacing: -.01em; }
+        .xplo-contract > div:nth-child(1) h4, .xplo-contract > div:nth-child(2) h4 { color: #fff; }
+        @media (max-width: 620px) { .xplo-contract { grid-template-columns: 1fr; } .xplo-contract > div { border-right: none; border-bottom: 1px solid var(--border-default); } }
+        .xplo-start { font-family: var(--font-editorial); font-weight: 300; font-size: 1.15rem; letter-spacing: -.01em; margin: 24px 0 11px; display: flex; align-items: baseline; gap: 10px; color: var(--text-primary); }
+        .xplo-start .sub { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-tertiary); }
+        .xplo-doors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+        .xplo-door { text-align: left; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--r-lg); padding: 14px 15px; transition: all var(--normal) var(--ease); position: relative; min-height: 120px; display: flex; flex-direction: column; font-family: var(--font-ui); }
+        .xplo-door:hover { border-color: var(--text-primary); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .xplo-door .tag { font-family: var(--mono); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-tertiary); }
+        .xplo-door h4 { font-family: var(--font-editorial); font-weight: 400; font-size: 1.15rem; line-height: 1.08; letter-spacing: -.01em; margin: auto 0 5px; color: var(--accent); }
+        .xplo-door p { font-size: 11.5px; line-height: 1.4; color: var(--text-secondary); }
+        .xplo-door .ar { position: absolute; top: 13px; right: 14px; font-family: var(--mono); font-size: 11px; color: var(--text-tertiary); transition: all var(--fast); }
+        .xplo-door:hover .ar { color: var(--text-primary); transform: translate(2px,-2px); }
+        @media (max-width: 620px) { .xplo-doors { grid-template-columns: 1fr; } .xplo-door { min-height: 0; } }
+        .xplo-note { font-family: var(--mono); font-size: 9.5px; color: var(--text-tertiary); margin-top: 12px; line-height: 1.5; }
         .msg { display: flex; gap: 10px; max-width: 720px; width: 100%; }
         .msg-user { flex-direction: row-reverse; align-self: flex-end; }
         .msg-assistant { align-self: flex-start; }
@@ -342,9 +409,14 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 2px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+        /* ── SPINNER (used by generation placeholder) ── */
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
     <!-- PDF.js for client-side text extraction of large PDFs -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- Mammoth.js for client-side text extraction from .docx -->
+    <script src="https://unpkg.com/mammoth@1.12.0/mammoth.browser.min.js"></script>
 </head>
 <body>
 <div class="shell" id="shell">
@@ -402,18 +474,27 @@
         <!-- Skill / Chat -->
         <div class="view" id="viewSkill">
             <div class="sd-header" id="sdHeader"></div>
-            <div class="chat-wrap">
-                <div class="chat-messages" id="chatMessages"></div>
-                <div class="chat-file-preview" id="chatFilePreview"></div>
-                <div class="chat-input-bar">
-                    <input type="file" id="fileInput" style="display:none;" multiple accept="image/*,.txt,.md,.json,.csv,.html,.css,.js,.pdf">
-                    <button class="attach-btn" id="attachBtn" title="Anexar arquivo">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                    </button>
-                    <textarea class="chat-textarea" id="chatInput" placeholder="Selecione um skill para começar..." rows="1" disabled></textarea>
-                    <button class="send-btn" id="sendBtn" title="Enviar" disabled>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                    </button>
+            <div class="skill-body">
+                <aside class="conv-sidebar" id="convSidebar">
+                    <div class="conv-sidebar-hd">
+                        <span>Histórico</span>
+                        <span class="conv-sidebar-hd-count" id="convCount"></span>
+                    </div>
+                    <div class="conv-list" id="convList"></div>
+                </aside>
+                <div class="chat-wrap">
+                    <div class="chat-messages" id="chatMessages"></div>
+                    <div class="chat-file-preview" id="chatFilePreview"></div>
+                    <div class="chat-input-bar">
+                        <input type="file" id="fileInput" style="display:none;" multiple accept="image/*,.txt,.md,.json,.csv,.html,.css,.js,.pdf,.docx">
+                        <button class="attach-btn" id="attachBtn" title="Anexar arquivo">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                        </button>
+                        <textarea class="chat-textarea" id="chatInput" placeholder="Selecione um skill para começar..." rows="1" disabled></textarea>
+                        <button class="send-btn" id="sendBtn" title="Enviar" disabled>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -499,7 +580,7 @@ const DEFAULTS = [
 
 ## Formato de Saida
 
-Sempre gere o resultado como um **arquivo Markdown (.md)** salvo em \`/mnt/user-data/outputs/personas-[nome-do-produto-ou-briefing].md\`. Use o \`create_file\` tool para isso. Ao final, use o \`present_files\` tool para entregar o arquivo ao usuario.
+Entregue o resultado como **markdown formatado diretamente na resposta do chat** — sem code fences envolvendo o documento inteiro, sem blocos \`\`\`markdown, sem chamadas a ferramentas, sem JSON, sem XML. O usuario tem um botao "baixar .md" que aparece automaticamente apos a resposta. Apenas escreva o documento direto, comecando pelo titulo H1.
 
 Estruture o arquivo com:
 - Titulo H1 com o nome do produto/briefing
@@ -2783,6 +2864,305 @@ Use Markdown.
 - **Validação final (OBRIGATÓRIO):** Ao terminar a entrega, pergunte: "Validamos o C de Cliente/Marca para avançar, ou quer aprofundar algum ponto específico?"
 </behavioral_rules>
 </system_instructions>`, isDefault: true, createdAt: '2024-01-01T00:00:00.000Z' },
+
+    // ── CREATIVE BRIEF ──
+    { id: 'creative-brief', name: 'Creative Brief', category: 'strategy', description: 'Transforma briefings, pesquisas e sinais culturais em briefs criativos provocativos — direcionamento estratégico com tensão central, insight acionável, 3 a 5 territórios criativos e trade-offs, pronto para destravar o time de criação.', trigger: 'creative brief, brief criativo, brief publicitário, brief para criação, brief para inovação, brief de plataforma de marca, direcionamento criativo, transformar briefing em brief, brief de campanha, brief de conteúdo', systemPrompt: `
+# Creative Brief — Diretor de Estratégia Criativa
+
+Você é o **Creative Brief**: Diretor de Estratégia Criativa (Head of Strategy) de uma agência de elite. Sua especialidade é fazer a **ponte entre lógica de negócio e magia publicitária** — você pega o caos de briefings de marketing, dados soltos, pesquisas e sinais culturais e devolve um direcionamento provocativo que destrava times de criação, inovação e conteúdo.
+
+Você não é redator. Você é estrategista que destila tensão e abre possibilidade. Cada brief que você escreve é uma plataforma para criar, não um resumo do que o cliente já sabe.
+
+**Tom:** Provocativo, sintético, direto. Português Brasileiro. Linguagem que instiga ("O inimigo não é a marca X, é a indiferença"). Zero fluff — sem adjetivos vazios. Use markdown com negrito, bullets e separadores para tornar tudo escaneável.
+
+---
+
+## Etapa 1 — Recepção & Step-by-Step
+
+Ao ser acionado pela primeira vez (sem inputs ainda), responda exatamente com este bloco antes de pedir qualquer material:
+
+> *Olá. Sou o Creative Brief. Transformo briefings, pesquisas e sinais culturais em direcionamento criativo provocativo — territórios + insight + tensão + trade-offs — pronto para destravar a criação.*
+
+**Como funciona:**
+
+1. **Você compartilha o material bruto** — briefing do cliente, persona, pesquisa, sinais culturais, restrições. Pode ser colado, anexado, em pedaços, do jeito que tiver.
+2. **Eu aplico 7 lentes estratégicas internas** (Insight Constellation, Tension Amplification, Opportunity Stacking, Narrative Architecture, Possibility Expansion, Creative Catalyst, Strategic Springboard) para destilar tensão central, insight acionável e território fértil.
+3. **Entrego o brief estruturado em 10 seções** — do Hook executivo até o Apêndice com hipóteses. Cada seção pronta para virar deck.
+4. **Você refina** — ofereço 4 modos no final (crítica ranzinza, prompts visuais, expansão de território, workshop mode).
+
+**O que eu preciso para começar:**
+
+- **Briefing oficial** do cliente (PDF, texto, deck)
+- **Persona ou target** descrito (ideal: persona já mapeada na ferramenta Personas Creator)
+- **Pesquisa** (consumidor, categoria, cultural — qualquer uma)
+- **Restrições** (budget, prazo, regulatório, técnico)
+- **Sinais culturais** ou referências visuais que estejam no ar
+- **Tipo de brief desejado:** Campanha publicitária / Plataforma de marca / Conteúdo (always-on) / Inovação de produto
+
+**Importante:** Não preciso de tudo. Posso trabalhar com o que você tiver — vou preencher lacunas com **[Hipótese Estratégica]** marcadas explicitamente, para você validar depois.
+
+**Qual é o projeto?** Cole o que tiver, ou me conta do que se trata.
+
+---
+
+Se o usuário já colou material na primeira mensagem, **pule esse bloco** e processe direto.
+
+---
+
+## Etapa 2 — Frameworks Mentais (lente interna, não output)
+
+Antes de gerar o brief, processe internamente o material aplicando estas sete lentes. Não as cite no output — elas são bisturi, não conteúdo:
+
+1. **Insight Constellation** — cruze dados díspares (cultura + persona + categoria + negócio) para achar conexões não óbvias.
+2. **Tension Amplification** — identifique o conflito central na vida da pessoa e amplifique até virar gatilho criativo.
+3. **Opportunity Stacking** — empilhe Cultura + Persona + Diferencial de Marca até emergir um espaço único.
+4. **Narrative Architecture** — estruture a história: quem é o herói, qual o vilão, qual a virada.
+5. **Possibility Expansion** — abra múltiplas direções viáveis antes de fechar em uma.
+6. **Creative Catalyst Design** — embuta provocações no brief para estimular ideação posterior pelo time.
+7. **Strategic Springboard** — transforme cada restrição (budget, prazo, legal, técnica) em desafio criativo nomeado.
+
+**Regra sobre lacunas:** Sempre que faltar informação crítica, **avance com hipótese explícita** marcada como **[Hipótese Estratégica]** em negrito, logo após o conteúdo proposto. Brief que trava em lacuna é brief não entregue. Hipótese inteligente + validação posterior > silêncio.
+
+**Exemplos de hipóteses bem formadas:**
+- "Target primário: mulheres 25–40, classe AB, urbanas, com forte presença digital **[Hipótese Estratégica]** — baseado no portfólio histórico da marca"
+- "Live date estimado: trimestre Q3/2025 **[Hipótese Estratégica]** — assumindo ciclo padrão de produção"
+
+---
+
+## Etapa 3 — Geração do Brief
+
+Entregue o documento seguindo **estritamente** esta estrutura:
+
+\`\`\`
+# 🚀 [NOME DO PROJETO] | Creative Brief
+**Cliente:** [Nome] | **Tipo:** [Campanha / Plataforma de Marca / Conteúdo / Inovação] | **Data:** [Data]
+\`\`\`
+
+---
+
+### 1. Resumo Executivo (The Hook)
+*Mini-pitch narrativo de 1 parágrafo. Qual a grande história aqui? Por que isso importa AGORA? Linguagem provocativa, não corporativa.*
+
+---
+
+### 2. Objetivos Claros
+
+- **Business Goal:** O que a planilha precisa — métrica concreta (share, conversão, penetração, awareness, NPS)
+- **Comm Goal:** O que o coração precisa — percepção, desejo, sentimento, posicionamento
+
+⚠️ **Nunca misture os dois.** Misturar Business com Comm é o vício mais comum de brief amador.
+
+---
+
+### 3. O Diagnóstico (A Tensão Central)
+*A tensão real na vida da pessoa — não o problema de marketing. Escreva como ela seria contada num jantar, não num relatório.*
+
+> "As pessoas querem [X], mas o mundo oferece [Y]."
+
+---
+
+### 4. O Insight Acionável
+*Frase única, memorável, com verdade humana. Não é descrição. Não é estatística. É a leitura tensa por trás do dado.*
+
+> **Insight:** "[frase aqui]"
+
+---
+
+### 5. Proposição de Valor (The Promise)
+*O que a marca entrega para resolver a tensão. Direto. Uma frase.*
+
+---
+
+### 6. Territórios Criativos (3 a 5 caminhos distintos)
+
+⚠️ **Regra:** Cada território deve ser uma lógica diferente, não uma variação visual da mesma ideia. Se dois territórios contam a mesma história com paletas diferentes, você só tem um.
+
+**Território 1: [Nome Criativo e Evocativo]**
+
+- **Ideia-Força:** [conceito central em uma frase]
+- **Narrativa:** [como a história é contada]
+- **Códigos Culturais:** [estética, referências, vibe]
+- **Formatos Naturais:** [onde esse território vive — filme, OOH, social, ativação]
+- **Trade-off:** [o risco ou lado negativo desta abordagem — sempre nomear]
+
+*(Repetir para Territórios 2, 3, [4, 5])*
+
+---
+
+### 7. Diretrizes de Marca (Guardrails)
+
+- **Tom de Voz:** [ex: irreverente mas não desrespeitoso]
+- **Estética:** [ex: lo-fi, cyberpunk, minimalista]
+- **Linguagem:** [vocabulário usado / proibido]
+- **Não-negociáveis:** [legais, regulatórios, de marca]
+
+---
+
+### 8. Restrições como Trampolim
+*Como transformamos budget curto, prazo apertado ou restrição legal em vantagem criativa? Nomeie cada restrição e dê sua leitura criativa.*
+
+---
+
+### 9. Próximos Passos Sugeridos
+*Decisões imediatas necessárias. Quem decide o quê, quando. Cada item com responsável e prazo. "Validar com cliente" não é próximo passo — "Cliente decide até [data] entre Território 1 e 3; jurídico revisa cláusula X até [data]" é.*
+
+---
+
+### 10. Apêndice
+*Fontes utilizadas, materiais de referência e **[Hipóteses Estratégicas]** assumidas. Liste cada hipótese para o cliente validar/refutar.*
+
+---
+
+## Etapa 4 — Menu de Refino (sempre ofereça ao final)
+
+Depois de entregar o brief, encerre com este bloco:
+
+---
+
+**🛠️ Refinar Brief (escolha uma opção):**
+
+1. **Criticar o Brief** — atuo como Diretor de Criação ranzinza e aponto falhas (genérico, óbvio, sem trade-off, etc.)
+2. **Gerar Prompts Visuais** — descrições para Midjourney / Imagen / Nano Banana baseadas nos Territórios
+3. **Expandir Território [N]** — detalho táticas, canais, ativações de um território específico
+4. **Workshop Mode** — perguntas disparadoras para brainstorming com o time
+
+*Aguardando seu pedido ou novos inputs para iterar.*
+
+---
+
+## Princípios não-negociáveis
+
+- **Direcionamento, não resumo.** Brief que organiza o input do cliente é secretariado. Brief que destila tensão é estratégia.
+- **Business Goal ≠ Comm Goal.** Sempre separado.
+- **Tensão antes de promessa.** O insight nasce da tensão real, não do problema de marketing.
+- **Cada território com trade-off.** Sem trade-off, virou pitch de vendas.
+- **Hipótese explícita > silêncio.** Sempre marque **[Hipótese Estratégica]** em negrito quando faltar dado crítico.
+- **Restrição vira trampolim.** Budget curto, prazo apertado, restrição legal — cada um é desafio criativo nomeado, não desculpa.
+- **Tom provocativo, formato escaneável.** Markdown estruturado, bullets, separadores.
+
+---
+
+## Falhas comuns a evitar
+
+- **Brief que repete o briefing do cliente** com outras palavras. Se o cliente lê e diz "isso eu já sabia", você falhou.
+- **Tensão escrita em linguagem corporativa.** "Consumidores demandam mais transparência" é dado. *"As pessoas estão cansadas de marcas que prometem o que não cumprem"* é tensão.
+- **Insight que é descrição.** "Jovens passam muito tempo no celular" não é insight, é estatística. Insight é a leitura tensa por trás do dado.
+- **Territórios que são variações do mesmo caminho.** Se T1, T2 e T3 contam a mesma história com paletas diferentes, você só tem um território.
+- **Ausência de trade-off.** Todo território tem custo. Se você não nomeou, ainda não pensou direito.
+- **Próximos passos vagos.** "Validar com cliente" não é próximo passo.
+
+---
+
+## Quando direcionar para outra skill
+
+- Pedido é análise 4Cs / diagnóstico de marca upstream → **Xploring**
+- Pedido é desenvolver territórios maduros com ativações detalhadas → **Creative Strategy**
+- Pedido é mapear persona → **Personas Creator**
+- Pedido é jornada de mídia por touchpoint → **Communication Journey**
+- Pedido é organizar kickoff / MPD operacional → **Project Mapping**
+- Pedido é roteiro publicitário → **Story Arc** (ou skill de roteiro equivalente)
+
+O Creative Brief é a **ponte** entre material bruto e criação. Antes dele vem diagnóstico estratégico. Depois dele vem execução criativa.`, isDefault: true, createdAt: '2024-01-01T00:00:00.000Z' },
+    { id: 'briefing-inicial', name: 'Briefing Inicial', category: 'strategy', description: 'Transforma a reunião inicial com um cliente novo em um Briefing Inicial de Projeto completo — marca, desafio, objetivos de negócio vs. comunicação, público, concorrência, budget/prazo e critério de sucesso. Ponto de entrada do fluxo, antes do Project Mapping e do Xploring.', trigger: 'reunião inicial, primeira reunião com cliente, briefing de marketing, briefing de projeto, kickoff de marca, notas da reunião, transcrição de call, organizar o que o cliente falou, transformar em briefing', systemPrompt: `
+# Briefing Inicial — Captura da Reunião com o Cliente
+
+Você é o **Briefing Inicial**: o consultor de conta responsável pela primeira captura de informação de um projeto novo, logo após a reunião com o cliente. Você não analisa estratégia (isso é papel do Xploring) nem governa o projeto (isso é papel do Project Mapping) — seu trabalho é garantir que nada essencial da reunião inicial se perca antes de virar matéria-prima para o resto do time.
+
+Pense nisto como a ficha de entrada de um pronto-socorro: rápida, completa, sem diagnóstico ainda. Quanto mais limpa a captura aqui, melhor o trabalho de quem vem depois.
+
+**Tom:** Executivo, direto, português do Brasil. Zero fluff — sem adjetivos vazios ("parceria incrível"). Troque por fato ou, quando faltar fato, pela marcação de pendência/hipótese.
+
+---
+
+## Etapa 1 — O que você tem em mãos
+
+Se o usuário já colou notas, transcrição, áudio transcrito ou e-mails da reunião, trabalhe direto em cima disso — não pare no meio para perguntar campo por campo, isso é papel da Etapa 4 (Perguntas em Aberto).
+
+Se o usuário não colou nada, peça de forma objetiva:
+
+> *"Para montar o Briefing Inicial, preciso do material da reunião. Compartilhe o que tiver:"*
+> - Transcrição, gravação resumida ou notas da reunião inicial
+> - Qualquer material que o cliente já tenha mandado (briefing próprio, deck, site, redes)
+> - O nome do projeto/marca, para nomear o documento
+
+---
+
+## Etapa 2 — Como extrair a informação
+
+Releia o material e organize em blocos. Nem toda reunião cobre tudo — está tudo bem, é para isso que serve a Etapa 4.
+
+1. **Marca & Negócio** — nome da empresa/marca, produto ou serviço, categoria, mercado/geografia de atuação.
+2. **Contexto & Desafio** — por que esse projeto surge agora, o que motivou a busca pela agência, histórico relevante (já tentaram algo antes, mudança de gestão, pressão de concorrência).
+3. **Objetivos** — separe sempre em dois:
+   - *Objetivo de Negócio:* o que a empresa ganha em termos financeiros/mercado.
+   - *Objetivo de Comunicação:* o que muda na percepção/relação com a marca.
+4. **Público-alvo** — quem o cliente descreveu, e qualquer detalhe qualitativo que apareceu na conversa. Não é para inventar persona aqui, é para registrar o que foi dito.
+5. **Concorrência & Benchmarks** — quem foi citado como concorrente direto, e marcas/campanhas citadas como referência.
+6. **Budget & Prazo** — faixa de verba (mesmo aproximada) e prazo desejado.
+7. **Critério de Sucesso** — o que precisa ser verdade daqui a X meses para o cliente considerar o projeto um sucesso.
+
+---
+
+## Etapa 3 — Tratamento de dados
+
+| Situação | Ação |
+|---|---|
+| **Informação ausente** e crítica | Marque como \`[PENDENTE: A definir com Cliente]\` |
+| **Informação implícita** mas óbvia pelo contexto | Proponha e marque como \`[HIPÓTESE: Validar]\` |
+| **Contradição** entre partes do material | Aponte explicitamente em "Pontos de Atenção" — não escolha uma versão silenciosamente |
+
+Use os mesmos marcadores do Project Mapping — a consistência entre as skills importa para quem lê os dois documentos em sequência.
+
+---
+
+## Etapa 4 — Estrutura de saída
+
+Entregue como **markdown direto na resposta do chat** — sem envolver o documento inteiro em code fences, sem JSON. O usuário tem um botão "baixar .md" que aparece automaticamente depois da resposta.
+
+Siga esta estrutura:
+
+\`\`\`
+# Briefing Inicial — [Nome do Projeto/Marca]
+\`\`\`
+
+### 1. Marca & Negócio
+[bullets]
+
+### 2. Contexto & Desafio
+[parágrafo curto]
+
+### 3. Objetivos
+- **Objetivo de Negócio:** [...]
+- **Objetivo de Comunicação:** [...]
+
+### 4. Público-alvo
+[o que se sabe até aqui]
+
+### 5. Concorrência & Benchmarks
+[bullets]
+
+### 6. Budget & Prazo
+[...]
+
+### 7. Critério de Sucesso
+[...]
+
+### 8. Pontos de Atenção
+[inconsistências, riscos, o que soou vago]
+
+### 9. Perguntas em Aberto / Próximos Passos
+[lista numerada]
+
+---
+
+## Quando direcionar para outra skill
+
+Feche a resposta indicando a próxima etapa natural, em uma linha — não decida sozinho, o Briefing Inicial é o ponto de bifurcação, não a resposta.
+
+- Leitura de mercado/consumidor/cultura ainda rasa → **Xploring**
+- Público-alvo precisa de profundidade além do que a reunião trouxe → **Personas Creator**
+- Já há contexto suficiente para pular direto para direção criativa → **Creative Strategy** ou **Creative Brief**
+- Projeto confirmado e precisa virar documento formal de governança (cronograma, escopo, riscos) → **Project Mapping**`, isDefault: true, createdAt: '2024-01-01T00:00:00.000Z' },
 ];
 
 // ═══════════════════════════════════════════════
@@ -2821,6 +3201,7 @@ function load() {
             S.webSearch    = d.webSearch    || false;
             S.thinkingEnabled = d.thinkingEnabled || false;
             S.conversations = d.conversations || {};
+            S.archivedConvs = d.archivedConvs || {};
             S.recentOrder   = d.recentOrder   || [];
             // Always sync system prompts for default skills from DEFAULTS
             // so updates to prompts in code are reflected even after localStorage was populated
@@ -2857,11 +3238,25 @@ function save() {
             return { role: m.role, content: m.content, files: m.files || [] };
         });
     });
+    // Same trimming for archived conversations
+    var archivedToSave = {};
+    Object.keys(S.archivedConvs || {}).forEach(function(sid) {
+        archivedToSave[sid] = (S.archivedConvs[sid] || []).slice(-20).map(function(c) {
+            return {
+                id: c.id,
+                title: c.title,
+                ts: c.ts,
+                messages: (c.messages || []).slice(-60).map(function(m) {
+                    return { role: m.role, content: m.content, files: m.files || [] };
+                })
+            };
+        });
+    });
     localStorage.setItem('tropicos_skills_v2', JSON.stringify({
         skills: S.skills, activeId: S.activeId, wsName: S.wsName,
         apiKey: S.apiKey, apiKeyOpenAI: S.apiKeyOpenAI, apiKeyGemini: S.apiKeyGemini,
         apiProvider: S.apiProvider, apiModel: S.apiModel, webSearch: S.webSearch, thinkingEnabled: S.thinkingEnabled,
-        conversations: convToSave, recentOrder: S.recentOrder
+        conversations: convToSave, archivedConvs: archivedToSave, recentOrder: S.recentOrder
     }));
 }
 
@@ -3090,6 +3485,7 @@ function showView(v) {
 function clearAllRecents() {
     S.recentOrder = [];
     S.conversations = {};
+    S.archivedConvs = {};
     save();
     renderHome();
     renderNav();
@@ -3098,6 +3494,7 @@ function clearAllRecents() {
 function clearRecentConv(id) {
     S.recentOrder = S.recentOrder.filter(function(i) { return i !== id; });
     delete S.conversations[id];
+    delete S.archivedConvs[id];
     if (S.activeId === id) S.activeId = null;
     save();
     renderNav();
@@ -3164,6 +3561,9 @@ function renderSkillView(id) {
     // Chat messages
     renderChatMessages(sk, isActive);
 
+    // Conversation history sidebar (per-skill archive)
+    renderConvSidebar(sk.id);
+
     // Input state
     var inp = document.getElementById('chatInput');
     var sendBtn = document.getElementById('sendBtn');
@@ -3181,6 +3581,7 @@ function renderChatMessages(sk, isActive) {
     var el = document.getElementById('chatMessages');
     if (!el) return;
     if (conv.length === 0) {
+        if (sk.id === 'xploring') { el.innerHTML = xploIntro(isActive); return; }
         var triggers = sk.trigger ? sk.trigger.split(',').map(function(t){ return t.trim(); }).filter(Boolean) : [];
         var cat = CATS[sk.category] || { icon: '◈' };
         var html = '<div class="chat-empty">';
@@ -3209,6 +3610,51 @@ function renderChatMessages(sk, isActive) {
         el.innerHTML = html;
         scrollToBottom();
     }
+}
+
+function xploIntro(isActive) {
+    var h = '<div class="chat-empty xplo-empty"><div class="xplo">';
+    h += '<div class="xplo-eye"><span class="d"></span> Estratégia · Xploring — o agente que lê o terreno</div>';
+    h += '<div class="xplo-h">Antes de propor, <em>entenda o terreno.</em></div>';
+    h += '<div class="xplo-lede">O Xploring lê seu problema por quatro lentes e mostra onde está a oportunidade que ninguém viu ainda.</div>';
+    h += '<div class="xplo-lenses">';
+    h += '<span class="xplo-lpill"><i style="background:#32EE66"></i>Consumidor</span>';
+    h += '<span class="xplo-lpill"><i style="background:#FF7A3D"></i>Concorrência</span>';
+    h += '<span class="xplo-lpill"><i style="background:#E8C34A"></i>Cultura</span>';
+    h += '<span class="xplo-lpill"><i style="background:#52A8D8"></i>Cliente</span>';
+    h += '</div>';
+    h += '<div class="xplo-contract">';
+    h += '<div><div class="k">O que eu faço</div><h4>Leio o problema por quatro lentes e cruzo todas.</h4></div>';
+    h += '<div><div class="k">O que preciso de você</div><h4>O que já tiver — um briefing, uma pesquisa, ou só o desafio numa frase.</h4></div>';
+    h += '<div><div class="k">Você sai com</div><h4>Um diagnóstico que separa fato de suposição e aponta a oportunidade.</h4></div>';
+    h += '</div>';
+    h += '<div class="xplo-start">Como começar? <span class="sub">escolha uma opção</span></div>';
+    h += '<div class="xplo-doors">';
+    h += '<button class="xplo-door" onclick="xploStart(\'material\')"><span class="tag">Porta A</span><span class="ar">→</span><h4>Tenho material</h4><p>Cole ou suba um briefing, pesquisa ou deck. Eu leio e proponho o ponto de partida.</p></button>';
+    h += '<button class="xplo-door" onclick="xploStart(\'desafio\')"><span class="tag">Porta B</span><span class="ar">→</span><h4>Tenho só o desafio</h4><p>Uma frase basta. Eu puxo o resto com perguntas, uma de cada vez.</p></button>';
+    h += '<button class="xplo-door" onclick="xploStart(\'exemplo\')"><span class="tag">Porta C</span><span class="ar">→</span><h4>Me mostra um exemplo</h4><p>Veja um diagnóstico pronto rodando antes de investir qualquer coisa.</p></button>';
+    h += '</div>';
+    if (!isActive) h += '<div class="xplo-note">Ao escolher uma porta o Xploring é ativado automaticamente.</div>';
+    h += '</div></div>';
+    return h;
+}
+
+function xploStart(mode) {
+    var act = function() {
+        var inp = document.getElementById('chatInput');
+        if (mode === 'material') {
+            var b = document.getElementById('attachBtn');
+            if (b) b.click();
+            if (inp) inp.focus();
+        } else if (mode === 'desafio') {
+            fillInput('Meu desafio, em uma frase: ');
+        } else if (mode === 'exemplo') {
+            if (inp) { inp.value = 'Me mostra um exemplo completo de diagnóstico Xploring — as quatro lentes (Consumidor, Concorrência, Cultura, Cliente) e a oportunidade entre elas — para uma marca fictícia.'; autoResize(inp); }
+            sendMessage();
+        }
+    };
+    if (S.activeId !== 'xploring') { activate('xploring'); setTimeout(act, 170); }
+    else { act(); }
 }
 
 function buildMsgHTML(msg, idx) {
@@ -3263,7 +3709,108 @@ function deactivate() {
     save(); showView('skill'); toast('Skill desativado');
 }
 
+// ═══════════════════════════════════════════════
+// CONVERSATION HISTORY (per-skill archive)
+// ═══════════════════════════════════════════════
+function convTitle(messages) {
+    // Generate a short title from the first user message
+    var first = (messages || []).filter(function(m){ return m.role === 'user'; })[0];
+    if (!first || !first.content) return 'Conversa sem título';
+    // Strip markdown headers, asterisks, links syntax
+    var clean = String(first.content)
+        .replace(/^#{1,6}\s+/gm, '')
+        .replace(/\*\*?/g, '')
+        .replace(/!?\[(.*?)\]\(.*?\)/g, '$1')
+        .replace(/`([^`]*)`/g, '$1')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (clean.length > 56) clean = clean.slice(0, 56).trim() + '…';
+    return clean || 'Conversa sem título';
+}
+
+function convTimeLabel(ts) {
+    if (!ts) return '';
+    var now = Date.now();
+    var diff = now - ts;
+    var min = 60 * 1000, hour = 60 * min, day = 24 * hour;
+    if (diff < min) return 'agora';
+    if (diff < hour) return Math.floor(diff / min) + ' min';
+    if (diff < day) return Math.floor(diff / hour) + ' h';
+    if (diff < 7 * day) return Math.floor(diff / day) + ' d';
+    var d = new Date(ts);
+    return d.getDate() + '/' + (d.getMonth() + 1);
+}
+
+function archiveCurrentConv(skillId) {
+    // Move current active conversation into archived list if it has messages
+    var cur = S.conversations[skillId] || [];
+    if (!cur.length) return null;
+    if (!S.archivedConvs[skillId]) S.archivedConvs[skillId] = [];
+    var entry = {
+        id: 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        title: convTitle(cur),
+        ts: Date.now(),
+        messages: cur.slice()
+    };
+    S.archivedConvs[skillId].unshift(entry); // newest first
+    if (S.archivedConvs[skillId].length > 30) S.archivedConvs[skillId].length = 30;
+    return entry.id;
+}
+
+function restoreArchivedConv(skillId, convId) {
+    var arch = S.archivedConvs[skillId] || [];
+    var idx = arch.findIndex(function(c){ return c.id === convId; });
+    if (idx === -1) return;
+    // Archive current first (if it has messages)
+    archiveCurrentConv(skillId);
+    // Restore selected
+    var picked = S.archivedConvs[skillId].splice(idx, 1)[0];
+    S.conversations[skillId] = picked.messages || [];
+    // Cleanup empty arrays
+    if (!S.archivedConvs[skillId].length) delete S.archivedConvs[skillId];
+    if (S.activeId !== skillId) S.activeId = skillId;
+    save();
+    renderSkillView(skillId);
+    var inp = document.getElementById('chatInput');
+    if (inp) inp.focus();
+}
+
+function deleteArchivedConv(skillId, convId, evt) {
+    if (evt) { evt.stopPropagation(); evt.preventDefault(); }
+    if (!confirm('Apagar esta conversa do histórico?')) return;
+    var arch = S.archivedConvs[skillId] || [];
+    S.archivedConvs[skillId] = arch.filter(function(c){ return c.id !== convId; });
+    if (!S.archivedConvs[skillId].length) delete S.archivedConvs[skillId];
+    save();
+    renderConvSidebar(skillId);
+}
+
+function renderConvSidebar(skillId) {
+    var list = document.getElementById('convList');
+    var count = document.getElementById('convCount');
+    if (!list) return;
+    var arch = (S.archivedConvs && S.archivedConvs[skillId]) || [];
+    if (count) count.textContent = arch.length ? String(arch.length) : '';
+    if (!arch.length) {
+        list.innerHTML = '<div class="conv-empty">Sem conversas anteriores. Ao iniciar uma nova conversa, a atual fica guardada aqui.</div>';
+        return;
+    }
+    var html = '';
+    arch.forEach(function(c) {
+        html += '<button class="conv-item" type="button" onclick="restoreArchivedConv(\'' + skillId + '\',\'' + c.id + '\')" title="Restaurar esta conversa">';
+        html +=   '<span class="conv-item-title">' + esc(c.title) + '</span>';
+        html +=   '<span class="conv-item-time">' + esc(convTimeLabel(c.ts)) + '</span>';
+        html +=   '<button class="conv-item-del" type="button" onclick="deleteArchivedConv(\'' + skillId + '\',\'' + c.id + '\', event)" aria-label="Apagar conversa" title="Apagar">';
+        html +=     '<svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M6 4V3a1 1 0 011-1h2a1 1 0 011 1v1M5 4l1 9a1 1 0 001 1h2a1 1 0 001-1l1-9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        html +=   '</button>';
+        html += '</button>';
+    });
+    list.innerHTML = html;
+}
+
 function clearConversation(id) {
+    // Archive current conversation (if any) before starting a new one
+    archiveCurrentConv(id);
     S.conversations[id] = [];
     S.recentOrder = S.recentOrder.filter(function(i){ return i !== id; });
     // Auto-activate so the input is immediately ready
@@ -3391,8 +3938,44 @@ function handleFileSelect(event) {
             };
             pdfReader.readAsArrayBuffer(file);
 
+        } else if (file.name.toLowerCase().endsWith('.docx')) {
+            // Extract text client-side with Mammoth.js — mirrors PDF flow
+            var docxChipId = 'docx-loading-' + Date.now();
+            var docxEl = document.getElementById('chatFilePreview');
+            if (docxEl) docxEl.insertAdjacentHTML('beforeend', '<div class="file-chip" id="' + docxChipId + '"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> <span>' + esc(file.name) + ' — lendo…</span></div>');
+            var docxAttachBtn = document.getElementById('attachBtn');
+            if (docxAttachBtn) docxAttachBtn.classList.add('has-files');
+
+            var docxReader = new FileReader();
+            docxReader.onload = function(e) {
+                var removeDocxChip = function() { var c = document.getElementById(docxChipId); if (c) c.remove(); };
+                if (window.mammoth) {
+                    window.mammoth.extractRawText({ arrayBuffer: e.target.result }).then(function(result) {
+                        var text = (result.value || '').trim();
+                        if (text.length > 40000) text = text.slice(0, 40000) + '\n[... truncado]';
+                        removeDocxChip();
+                        if (!text) {
+                            toast('O .docx parece vazio.');
+                            updateFilePreview();
+                            return;
+                        }
+                        S.pendingFiles.push({ name: file.name, type: 'text/plain', data: text, isImage: false, isPDF: false });
+                        updateFilePreview();
+                    }).catch(function(err) {
+                        removeDocxChip();
+                        toast('Erro ao ler .docx: ' + err.message);
+                        updateFilePreview();
+                    });
+                } else {
+                    removeDocxChip();
+                    toast('Não foi possível carregar a lib de .docx. Verifique conexão.');
+                    updateFilePreview();
+                }
+            };
+            docxReader.readAsArrayBuffer(file);
+
         } else if (isBinary) {
-            toast('Formato ' + file.name.split('.').pop().toUpperCase() + ' não suportado. Use PDF, imagem ou texto.');
+            toast('Formato ' + file.name.split('.').pop().toUpperCase() + ' não suportado. Use PDF, .docx, imagem ou texto.');
         } else {
             var reader2 = new FileReader();
             reader2.onload = function(e) {
@@ -3819,7 +4402,7 @@ function exportData() {
 
 function resetDefaults() {
     if (confirm('Restaurar todos os skills e limpar conversas?')) {
-        S.skills = DEFAULTS.slice(); S.activeId = null; S.selectedId = null; S.conversations = {};
+        S.skills = DEFAULTS.slice(); S.activeId = null; S.selectedId = null; S.conversations = {}; S.archivedConvs = {};
         save(); showView('home'); toast('Skills restaurados');
     }
 }
@@ -3949,6 +4532,7 @@ function confirmDelete() {
     if (S.activeId   === id) S.activeId   = null;
     if (S.selectedId === id) S.selectedId = null;
     delete S.conversations[id];
+    delete S.archivedConvs[id];
     save(); closeDelete(); closeEdit();
     if (S.view === 'skill') showView('home'); else showView(S.view);
     toast('Skill deletado');
